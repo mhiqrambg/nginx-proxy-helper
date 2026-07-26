@@ -2,7 +2,7 @@
 
 CLI tool to manage **Nginx Reverse Proxy + Let's Encrypt SSL Certbot** on your VPS using Docker Compose.
 
-Automatically generates Nginx configurations, requests SSL certificates via Let's Encrypt, validates DNS records, auto-connects container networks, and handles automatic rollbacks on errors — all from a single command line interface.
+Automatically generates Nginx configurations, requests SSL certificates via Let's Encrypt, validates DNS records, auto-connects container networks, consolidates subdomain certificates, exports standalone deployments, and handles automatic rollbacks on errors — all from a single command line interface.
 
 ---
 
@@ -13,10 +13,10 @@ Automatically generates Nginx configurations, requests SSL certificates via Let'
 | `proxy add-domain` | Add a new main domain with automated SSL & optional `www` alias |
 | `proxy add-subdomain` | Add a subdomain (supports certificate reuse or separate certs) |
 | `proxy list` | List all active domains, proxy targets, and SSL certificate status |
-| `proxy remove` | Remove domain configuration (optionally delete SSL certificates) |
+| `proxy remove` | Remove domain configuration (with interactive SSL certificate cleanup) |
 | `proxy test` | Test Nginx configuration (`docker exec nginx nginx -t`) |
 | `proxy reload` | Reload Nginx service (`docker exec nginx nginx -s reload`) |
-| `proxy renew` | Renew all SSL certificates and reload Nginx |
+| `proxy renew` | Renew all SSL certificates (or consolidate subdomains with `--sync`) |
 | `proxy dns-check` | Check if domain A records point to your VPS IP |
 | `proxy check` | Validate system dependencies (Docker, Python, network, containers) |
 | `proxy auto-install` | Auto-install Docker/Compose, setup network, and launch containers |
@@ -28,7 +28,7 @@ Automatically generates Nginx configurations, requests SSL certificates via Let'
 ## 📋 Prerequisites
 
 - **Python** 3.8+
-- **Docker** & **Docker Compose** v2 (or let `proxy install` install them automatically)
+- **Docker** & **Docker Compose** v2 (or let `proxy auto-install` install them automatically)
 - **VPS** with a public IP address
 - A domain name with DNS A records pointing to your VPS IP
 
@@ -40,7 +40,7 @@ Follow these recommended stages for a seamless setup on a fresh VPS:
 
 ```mermaid
 flowchart TD
-    A["1. Install CLI"] --> B["2. Setup VPS Environment\n(proxy install)"]
+    A["1. Install CLI"] --> B["2. Setup VPS Environment\n(proxy auto-install)"]
     B --> C["3. Add DNS A Record at Registrar"]
     C --> D["4. Verify DNS\n(proxy dns-check)"]
     D --> E["5. Add Domain + Auto SSL\n(proxy add-domain)"]
@@ -58,10 +58,10 @@ Run the one-line installer on your VPS or local terminal:
 
 ### Stage 2: Initialize VPS Environment
 
-Run `proxy install` to prepare the environment automatically:
+Run `proxy auto-install` to prepare the environment automatically:
 
 ```bash
-proxy install
+proxy auto-install
 ```
 
 This single command will:
@@ -79,7 +79,7 @@ In your domain registrar dashboard (Cloudflare, Namecheap, GoDaddy, etc.), add a
 | **A** | `@` (or subdomain like `api`) | `YOUR_VPS_IP` | Auto / 3600 |
 | **A** | `www` (optional) | `YOUR_VPS_IP` | Auto / 3600 |
 
-*(If using Cloudflare, temporarily set proxy mode to **DNS Only / Gray Cloud** during initial SSL verification).*
+*(If using Cloudflare, set proxy mode to **DNS Only / Gray Cloud** during initial SSL verification).*
 
 ### Stage 4: Verify DNS Propagation
 
@@ -129,9 +129,11 @@ pip install -e .
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/update.sh)"
 ```
 
-### Uninstall
+### Interactive Uninstall
 
 ```bash
+proxy uninstall
+# or
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/uninstall.sh)"
 ```
 
@@ -152,21 +154,31 @@ proxy add-domain example.com --target app:3000 --email admin@example.com
 proxy add-domain example.com --target app:3000 --force
 ```
 
-**Automated 5-Step Workflow:**
-1. ✅ **DNS Validation**: Verifies A record points to your VPS IP
-2. ✅ **Target Inspection**: Validates & auto-connects target container to `nginx-network`
-3. ✅ **HTTP Challenge Config**: Deploys temporary HTTP config for ACME validation
-4. ✅ **SSL Certificate Request**: Requests SSL certificate via Certbot container
-5. ✅ **SSL Proxy Config**: Deploys production SSL config & reloads Nginx
-
 ### Add Subdomain
 
 ```bash
-# Reuse parent domain certificate (default)
+# Automatic cert handling (uses separate or parent cert based on availability)
 proxy add-subdomain api.example.com --target api-service:8080
 
-# Request separate SSL certificate
+# Explicitly request separate SSL certificate
 proxy add-subdomain blog.example.com --target ghost:2368 --separate-cert
+```
+
+### Consolidate / Sync Subdomain Certificates
+
+Consolidate all active subdomains under a domain into a single unified master SSL certificate:
+
+```bash
+proxy renew --sync example.com
+```
+
+### Export Standalone Setup
+
+Export Nginx configs, SSL certs, and Docker Compose files to any folder to run independently outside of CLI:
+
+```bash
+proxy export /root/nginx-alpine
+cd /root/nginx-alpine && docker compose up -d
 ```
 
 ### List Active Domains
@@ -188,10 +200,10 @@ Example Output:
 ### Remove Domain
 
 ```bash
-# Remove Nginx configuration file
+# Remove domain (prompts interactively for SSL cert deletion)
 proxy remove example.com
 
-# Remove configuration file and SSL certificate
+# Force delete config + SSL certificate
 proxy remove example.com --remove-cert
 ```
 
@@ -205,79 +217,25 @@ proxy test
 proxy reload
 ```
 
-### Check System & Dependencies
-
-```bash
-proxy check
-```
-
-Output:
-```
-🔍 System Dependencies
-
-┌──────────────────────┬──────────┬──────────────────────────┬──────────┐
-│ Component            │  Status  │ Details                  │ Required │
-├──────────────────────┼──────────┼──────────────────────────┼──────────┤
-│ Python               │    ✅    │ Python 3.12.3            │   Yes    │
-│ Docker               │    ✅    │ Docker version 28.0.1    │   Yes    │
-│ OpenSSL              │    ✅    │ OpenSSL 3.0.13           │    No    │
-│ curl                 │    ✅    │ curl 8.5.0               │    No    │
-│ Docker Compose       │    ✅    │ v2.27.0                  │   Yes    │
-└──────────────────────┴──────────┴──────────────────────────┴──────────┘
-
-🐳 Docker Status
-
-┌──────────────────────┬──────────┬─────────┐
-│ Component            │  Status  │ Details │
-├──────────────────────┼──────────┼─────────┤
-│ Docker Daemon        │    ✅    │ Running │
-│ nginx-network        │    ✅    │ Exists  │
-│ Container: nginx     │    ✅    │ Running │
-│ Container: certbot   │    ✅    │ Running │
-└──────────────────────┴──────────┴─────────┘
-
-🐍 Python Packages
-
-┌──────────────────────┬──────────┬─────────┐
-│ Package              │  Status  │ Version │
-├──────────────────────┼──────────┼─────────┤
-│ click                │    ✅    │ 8.4.2   │
-│ Jinja2               │    ✅    │ 3.1.6   │
-│ dnspython            │    ✅    │ 2.8.0   │
-│ rich                 │    ✅    │ 15.0.0  │
-│ tabulate             │    ✅    │ 0.10.0  │
-└──────────────────────┴──────────┴─────────┘
-
-✅ All critical dependencies are satisfied!
-```
-
 ---
 
-## ⏰ Auto-Renewal Crontab Setup
+## ⏰ Auto-Renewal Setup
 
-### Method 1: Interactive Assistant
+### In-Container Automatic Renewal (Default — Zero Config Needed)
+
+The running `certbot` Docker container automatically checks and renews certificates **every 12 hours**, and `nginx` container automatically reloads **every 6 hours**.
+
+### OS Crontab Setup (Optional Backup)
+
+To setup additional daily OS renewal check:
 
 ```bash
 proxy renew --setup-cron
 ```
 
-### Method 2: Manual Crontab Setup
-
-Make script executable and add to crontab (runs daily at 3:00 AM):
-
-```bash
-chmod +x scripts/renew-certs.sh
-crontab -e
-```
-
-Add this line:
+Or add to crontab manually (`crontab -e`):
 ```cron
-0 3 * * * /path/to/nginx-proxy-helper/scripts/renew-certs.sh >> /var/log/certbot-renew.log 2>&1
-```
-
-Or using `proxy renew` command directly:
-```cron
-0 3 * * * cd /path/to/nginx-proxy-helper && proxy renew >> /var/log/certbot-renew.log 2>&1
+0 3 * * * proxy renew >> /var/log/certbot-renew.log 2>&1
 ```
 
 ---
@@ -290,15 +248,15 @@ nginx-proxy-helper/
 ├── README.md                   # Documentation
 ├── install.sh                  # One-line installer
 ├── update.sh                   # One-line updater
-├── uninstall.sh                # Uninstaller
+├── uninstall.sh                # Interactive uninstaller
 │
 ├── nginx_proxy_helper/         # Source code
 │   ├── cli.py                  # CLI entrypoint (Click subcommands)
 │   ├── config.py               # Paths, discovery & settings
 │   ├── lib/
-│   │   ├── certbot.py          # Certbot SSL certificate manager
-│   │   ├── nginx.py            # Nginx config generator & backup/rollback
-│   │   ├── dns.py              # DNS resolution & validation
+│   │   ├── certbot.py          # Certbot SSL manager & sync/consolidation
+│   │   ├── nginx.py            # Nginx config generator & export helper
+│   │   ├── dns.py              # DNS resolution & conflict detection
 │   │   ├── docker.py           # Docker exec & network auto-connect
 │   │   ├── checker.py          # Dependency status scanner
 │   │   └── installer.py        # Automated VPS Docker environment setup
@@ -319,38 +277,19 @@ nginx-proxy-helper/
 
 ---
 
-## 🔧 Customizing Nginx Templates
-
-Templates are located in `nginx_proxy_helper/templates/`:
-
-- **`http_challenge.conf.j2`** — Temporary HTTP config for ACME challenge validation
-- **`ssl_proxy.conf.j2`** — Production SSL reverse proxy with HTTP2, HSTS, and WebSocket support
-
-Available Jinja2 template variables:
-- `{{ domain }}` — Domain name
-- `{{ target }}` — Target proxy address (`container:port` or `host.docker.internal:port`)
-- `{{ www }}` — Boolean, whether to include `www.domain` alias
-- `{{ cert_domain }}` — Certificate directory name under Let's Encrypt
-
----
-
 ## 🐛 Troubleshooting
 
-### DNS Not Propagated
+### Multiple Conflicting A Records
 ```
-✗ Domain 'example.com' DOES NOT point to this VPS!
+⚠️ CRITICAL DNS WARNING: Multiple conflicting A records detected!
 ```
-→ Wait 5-30 minutes after updating DNS records at your registrar, then retry.
+→ Delete extra IP records from your DNS dashboard so Let's Encrypt doesn't hit a mismatch IP.
 
 ### Target Container Not Found
 ```
 ⚠ Target container 'myapp' is not connected to 'nginx-network'.
 ```
 → Run `docker network connect nginx-network myapp` or let `proxy add-domain` auto-connect it.
-
-### Certbot Failure
-→ Configs are automatically rolled back to prevent broken states.
-→ Ensure port 80 & 443 are publicly accessible and not blocked by VPS firewall (UFW/iptables).
 
 ---
 
