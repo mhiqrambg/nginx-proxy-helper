@@ -306,9 +306,7 @@ def remove_certificate(domain: str) -> bool:
     Returns:
         True if successfully removed.
     """
-    if not cert_exists(domain):
-        console.print(f"[dim]No certificate found for {domain}[/dim]")
-        return False
+    import shutil
 
     result = run_certbot_docker([
         "delete",
@@ -316,7 +314,17 @@ def remove_certificate(domain: str) -> bool:
         "--cert-name", domain,
     ])
 
-    if result.returncode == 0:
+    # Clean up host disk directories for live, archive, and renewal
+    for base_dir in ["live", "archive"]:
+        p = CERTBOT_CONF_DIR / base_dir / domain
+        if p.exists():
+            shutil.rmtree(p, ignore_errors=True)
+
+    renewal_conf = CERTBOT_CONF_DIR / "renewal" / f"{domain}.conf"
+    if renewal_conf.exists():
+        renewal_conf.unlink(missing_ok=True)
+
+    if result.returncode == 0 or not cert_exists(domain):
         console.print(f"[green]✓[/green] Certificate removed for {domain}")
         return True
     else:
@@ -361,25 +369,29 @@ def sync_domain_certificates(main_domain: str, email: Optional[str] = None) -> b
             if d != main_domain:
                 subdomain_configs.append(cfg)
 
-    # Always ensure main_domain and www.main_domain are included
+    # Always ensure main_domain is included
     all_domains.add(main_domain)
+
+    # Order domains: main_domain first, then others sorted
+    ordered_domains = [main_domain] + sorted([d for d in all_domains if d != main_domain])
 
     console.print(
         f"[yellow]Syncing & consolidating SSL certificates for '{main_domain}'...[/yellow]\n"
-        f"[cyan]Domains included ({len(all_domains)}): {', '.join(sorted(all_domains))}[/cyan]\n"
+        f"[cyan]Domains included ({len(ordered_domains)}): {', '.join(ordered_domains)}[/cyan]\n"
     )
 
-    # Prepare Certbot arguments for unified master certificate
+    # Prepare Certbot arguments for unified master certificate with explicit --cert-name
     args = [
         "certonly",
         "--webroot",
         "--webroot-path=/var/www/certbot",
         "--non-interactive",
         "--agree-tos",
+        "--cert-name", main_domain,
         "--expand",
     ]
 
-    for d in sorted(all_domains):
+    for d in ordered_domains:
         args.extend(["-d", d])
 
     email = email or DEFAULT_EMAIL
