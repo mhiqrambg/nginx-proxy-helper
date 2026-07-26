@@ -20,6 +20,7 @@ Automatically generates Nginx configurations, requests SSL certificates via Let'
 | `proxy dns-check` | Check if domain A records point to your VPS IP |
 | `proxy check` | Validate system dependencies (Docker, Python, network, containers) |
 | `proxy install` | Auto-install Docker/Compose, setup network, and launch containers |
+| `proxy export` | Export standalone Nginx setup & certs to any folder (e.g. `/root/nginx-alpine`) |
 
 ---
 

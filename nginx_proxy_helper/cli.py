@@ -27,6 +27,7 @@ from nginx_proxy_helper.lib.nginx import (
     backup_config,
     cleanup_old_backups,
     config_exists,
+    export_standalone_setup,
     list_active_configs,
     reload_nginx,
     remove_config,
@@ -659,8 +660,45 @@ def install_cmd():
         sys.exit(1)
 
 
+# ── Command: export ─────────────────────────────────────────────────
+
+
+@cli.command("export")
+@click.argument("destination", default="/root/nginx-alpine", type=click.Path())
+def export_cmd(destination: str):
+    """Export standalone Nginx setup (docker-compose, configs, SSL certs) to a folder.
+
+    Allows running Nginx independently outside of ~/.nginx-proxy-helper.
+
+    Examples:
+        proxy export
+        proxy export /root/nginx-alpine
+        proxy export /var/www/my-proxy
+    """
+    from pathlib import Path
+
+    dest_path = Path(destination).resolve()
+    console.print(f"\n[bold]Exporting standalone Nginx setup to:[/bold] [cyan]{dest_path}[/cyan]")
+
+    try:
+        exported_path = export_standalone_setup(dest_path)
+        console.print(Panel(
+            f"[green]✓ Standalone Nginx setup exported successfully![/green]\n\n"
+            f"  📁 Folder: [cyan]{exported_path}[/cyan]\n\n"
+            f"  [bold]To run independently without proxy CLI:[/bold]\n"
+            f"    [white]cd {exported_path}[/white]\n"
+            f"    [white]docker compose up -d[/white]",
+            title="📦 Export Complete",
+            border_style="green",
+        ))
+    except Exception as e:
+        console.print(f"[red]✗ Export failed: {e}[/red]")
+        sys.exit(1)
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":
     cli()
+

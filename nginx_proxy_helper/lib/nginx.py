@@ -257,3 +257,38 @@ def list_active_configs() -> list[dict]:
         })
 
     return configs
+
+
+def export_standalone_setup(target_dir: Path) -> Path:
+    """Export standalone Nginx Docker Compose setup (configs, certs, compose file) to a target directory.
+
+    Args:
+        target_dir: Target directory path.
+
+    Returns:
+        Path to exported directory.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Copy docker-compose.yml
+    src_compose = COMPOSE_DIR / "docker-compose.yml"
+    if src_compose.exists():
+        shutil.copy2(src_compose, target_dir / "docker-compose.yml")
+
+    # 2. Copy nginx directory (conf.d, ssl)
+    src_nginx = COMPOSE_DIR / "nginx"
+    dst_nginx = target_dir / "nginx"
+    if src_nginx.exists():
+        if dst_nginx.exists():
+            shutil.rmtree(dst_nginx)
+        shutil.copytree(src_nginx, dst_nginx)
+
+    # 3. Copy certbot directory (conf, www)
+    src_certbot = COMPOSE_DIR / "certbot"
+    dst_certbot = target_dir / "certbot"
+    if src_certbot.exists():
+        if dst_certbot.exists():
+            shutil.rmtree(dst_certbot)
+        shutil.copytree(src_certbot, dst_certbot)
+
+    return target_dir
