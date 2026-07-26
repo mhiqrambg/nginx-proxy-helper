@@ -612,6 +612,25 @@ def check_deps():
         sys.exit(1)
 
 
+# ── Command: install ────────────────────────────────────────────────
+
+
+@cli.command("install")
+def install_cmd():
+    """Install Docker & Docker Compose (jika belum ada), buat docker network, dan jalankan container.
+
+    Menyiapkan seluruh environment VPS secara otomatis.
+
+    Contoh:
+        proxy install
+    """
+    from nginx_proxy_helper.lib.installer import setup_vps_environment
+
+    success = setup_vps_environment()
+    if not success:
+        sys.exit(1)
+
+
 # ── Main ────────────────────────────────────────────────────────────
 
 

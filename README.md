@@ -19,6 +19,7 @@ Otomatis generate konfigurasi Nginx, request sertifikat SSL via Let's Encrypt, d
 | `proxy renew` | Renew semua sertifikat SSL |
 | `proxy dns-check` | Cek apakah DNS sudah mengarah ke VPS |
 | `proxy check` | Cek semua dependency (Docker, Python, dll) |
+| `proxy install` | Auto-install Docker & start containers di VPS |
 
 ---
 
@@ -59,15 +60,23 @@ pip install -e .
 
 ### Post-Install Setup
 
+Cukup jalankan satu perintah ini untuk otomatis meng-install Docker (jika belum ada), membuat Docker network, dan mengaktifkan container Nginx + Certbot:
+
 ```bash
-# Create Docker network (required, run once)
+proxy install
+```
+
+Atau secara manual:
+
+```bash
+# Create Docker network
 docker network create nginx-network
 
 # Start Nginx & Certbot services
-cd ~/.nginx-proxy-helper/nginx-alpine  # or your clone path
+cd ~/.nginx-proxy-helper/nginx-alpine
 docker compose up -d
 
-# Verify everything is ready
+# Verify system health
 proxy check
 ```
 
