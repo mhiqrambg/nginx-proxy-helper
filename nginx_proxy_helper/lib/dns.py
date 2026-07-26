@@ -136,8 +136,19 @@ def print_dns_check_result(
     console.print(table)
     console.print(f"\n[dim]VPS Public IP: {vps_ip}[/dim]")
 
-    if match:
+    has_mismatch = any(ip != vps_ip for ip in resolved_ips)
+
+    if match and not has_mismatch:
         console.print(f"\n[green]✓ Domain '{domain}' successfully points to this VPS![/green]")
+    elif match and has_mismatch:
+        invalid_ips = ", ".join(ip for ip in resolved_ips if ip != vps_ip)
+        console.print(f"\n[green]✓ Domain '{domain}' points to this VPS IP ({vps_ip})...[/green]")
+        console.print(
+            f"\n[bold red]⚠️ CRITICAL DNS WARNING: Multiple conflicting A records detected![/bold red]\n"
+            f"[yellow]Your DNS contains extra IP records: [bold red]{invalid_ips}[/bold red][/yellow]\n"
+            f"[yellow]Let's Encrypt will try connecting to {invalid_ips} and fail![/yellow]\n\n"
+            f"[bold white]👉 ACTION REQUIRED:[/bold white] Go to your DNS dashboard (Cloudflare/Registrar) and [bold red]DELETE[/bold red] the A record for [bold red]{invalid_ips}[/bold red]."
+        )
     else:
         console.print(f"\n[red]✗ Domain '{domain}' DOES NOT point to this VPS IP address![/red]")
         print_dns_instructions(domain, vps_ip)
