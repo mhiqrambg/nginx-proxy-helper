@@ -1,4 +1,4 @@
-"""Package checker — validasi semua dependency yang dibutuhkan."""
+"""Package checker — validate all required system and project dependencies."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ console = Console()
 
 
 def _check_command(cmd: str, version_flag: str = "--version") -> tuple[bool, str]:
-    """Cek apakah command tersedia dan dapatkan versinya.
+    """Check if a command executable is available and retrieve its version string.
 
     Args:
         cmd: Command name (e.g., "docker").
-        version_flag: Flag untuk mendapatkan versi.
+        version_flag: Flag to query version.
 
     Returns:
-        Tuple of (available, version_string).
+        Tuple of (is_available, version_string).
     """
     path = shutil.which(cmd)
     if not path:
@@ -35,7 +35,6 @@ def _check_command(cmd: str, version_flag: str = "--version") -> tuple[bool, str
             timeout=10,
         )
         output = (result.stdout or result.stderr or "").strip()
-        # Ambil baris pertama saja
         version = output.split("\n")[0] if output else "Unknown version"
         return True, version
     except Exception:
@@ -43,7 +42,7 @@ def _check_command(cmd: str, version_flag: str = "--version") -> tuple[bool, str
 
 
 def _check_docker_compose() -> tuple[bool, str]:
-    """Cek docker compose (v2 plugin style)."""
+    """Check Docker Compose v2 plugin capability."""
     try:
         result = subprocess.run(
             ["docker", "compose", "version"],
@@ -60,7 +59,7 @@ def _check_docker_compose() -> tuple[bool, str]:
 
 
 def _check_docker_running() -> tuple[bool, str]:
-    """Cek apakah Docker daemon sedang berjalan."""
+    """Check if Docker daemon is active and responding."""
     try:
         result = subprocess.run(
             ["docker", "info"],
@@ -76,17 +75,17 @@ def _check_docker_running() -> tuple[bool, str]:
 
 
 def _check_python_package(package: str) -> tuple[bool, str]:
-    """Cek apakah Python package terinstall.
+    """Check if a Python package is installed in the environment.
 
     Args:
-        package: Nama package (import name).
+        package: Package module name.
 
     Returns:
-        Tuple of (installed, version_string).
+        Tuple of (is_installed, version_string).
     """
     try:
         mod = __import__(package)
-        version = getattr(mod, "__version__", getattr(mod, "version", "unknown"))
+        version = getattr(mod, "__version__", getattr(mod, "version", "installed"))
         if callable(version):
             version = "installed"
         return True, str(version)
@@ -95,7 +94,7 @@ def _check_python_package(package: str) -> tuple[bool, str]:
 
 
 def _check_network_exists(network: str = "nginx-network") -> tuple[bool, str]:
-    """Cek apakah Docker network sudah ada."""
+    """Check if the external Docker network exists."""
     try:
         result = subprocess.run(
             ["docker", "network", "inspect", network],
@@ -111,7 +110,7 @@ def _check_network_exists(network: str = "nginx-network") -> tuple[bool, str]:
 
 
 def _check_container_running(name: str) -> tuple[bool, str]:
-    """Cek apakah container sedang berjalan."""
+    """Check if a Docker container is running."""
     try:
         result = subprocess.run(
             ["docker", "inspect", "-f", "{{.State.Status}}", name],
@@ -129,10 +128,10 @@ def _check_container_running(name: str) -> tuple[bool, str]:
 
 
 def run_full_check() -> bool:
-    """Jalankan full dependency check dan tampilkan hasilnya.
+    """Execute full system dependency check and output formatted tables.
 
     Returns:
-        True jika semua critical dependency terpenuhi.
+        True if all critical dependencies are satisfied.
     """
     all_ok = True
 

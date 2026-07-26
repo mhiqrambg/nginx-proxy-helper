@@ -1,4 +1,4 @@
-"""Nginx helper — generate config, test, dan reload nginx."""
+"""Nginx helper — config generation, test, and reload operations."""
 
 from __future__ import annotations
 
@@ -32,14 +32,14 @@ _env = Environment(
 
 
 def render_http_challenge_config(domain: str, www: bool = False) -> str:
-    """Render HTTP-only config untuk ACME challenge.
+    """Render HTTP-only configuration for ACME challenge.
 
     Args:
         domain: Domain name.
-        www: Jika True, tambahkan www.domain sebagai server_name.
+        www: If True, include www.domain in server_name.
 
     Returns:
-        Rendered nginx config string.
+        Rendered Nginx configuration string.
     """
     template = _env.get_template("http_challenge.conf.j2")
     return template.render(domain=domain, www=www)
@@ -51,16 +51,16 @@ def render_ssl_config(
     www: bool = False,
     cert_domain: Optional[str] = None,
 ) -> str:
-    """Render full SSL reverse proxy config.
+    """Render production SSL reverse proxy configuration.
 
     Args:
         domain: Domain name.
-        target: Proxy target (e.g., "app:3000").
-        www: Jika True, tambahkan www.domain sebagai server_name.
-        cert_domain: Domain untuk path sertifikat. Default = domain.
+        target: Proxy target (e.g., "app:3000" or "host.docker.internal:8080").
+        www: If True, include www.domain in server_name.
+        cert_domain: Domain name for certificate path. Default = domain.
 
     Returns:
-        Rendered nginx config string.
+        Rendered Nginx configuration string.
     """
     if cert_domain is None:
         cert_domain = domain
@@ -78,24 +78,24 @@ def render_ssl_config(
 
 
 def config_path(domain: str) -> Path:
-    """Dapatkan path file config untuk domain."""
+    """Get configuration file path for domain."""
     return NGINX_CONF_DIR / f"{domain}.conf"
 
 
 def config_exists(domain: str) -> bool:
-    """Cek apakah config file untuk domain sudah ada."""
+    """Check if configuration file for domain exists."""
     return config_path(domain).exists()
 
 
 def write_config(domain: str, content: str) -> Path:
-    """Tulis config file untuk domain.
+    """Write configuration file for domain.
 
     Args:
         domain: Domain name.
-        content: Config content.
+        content: Configuration content.
 
     Returns:
-        Path ke file config yang ditulis.
+        Path to written configuration file.
     """
     NGINX_CONF_DIR.mkdir(parents=True, exist_ok=True)
     path = config_path(domain)
@@ -105,13 +105,13 @@ def write_config(domain: str, content: str) -> Path:
 
 
 def remove_config(domain: str) -> bool:
-    """Hapus config file untuk domain.
+    """Remove configuration file for domain.
 
     Args:
         domain: Domain name.
 
     Returns:
-        True jika file berhasil dihapus, False jika tidak ada.
+        True if file was removed, False if file did not exist.
     """
     path = config_path(domain)
     if path.exists():
@@ -125,13 +125,13 @@ def remove_config(domain: str) -> bool:
 
 
 def backup_config(domain: str) -> Optional[Path]:
-    """Backup config file sebelum modifikasi.
+    """Backup configuration file before modification.
 
     Args:
         domain: Domain name.
 
     Returns:
-        Path ke backup file, atau None jika tidak ada config yang di-backup.
+        Path to backup file, or None if no config existed.
     """
     src = config_path(domain)
     if not src.exists():
@@ -146,11 +146,11 @@ def backup_config(domain: str) -> Optional[Path]:
 
 
 def restore_config(domain: str, backup_path: Path) -> None:
-    """Restore config dari backup.
+    """Restore configuration file from backup.
 
     Args:
         domain: Domain name.
-        backup_path: Path ke backup file.
+        backup_path: Path to backup file.
     """
     dst = config_path(domain)
     shutil.copy2(backup_path, dst)
@@ -158,11 +158,11 @@ def restore_config(domain: str, backup_path: Path) -> None:
 
 
 def cleanup_old_backups(domain: str, keep: int = 5) -> None:
-    """Hapus backup lama, simpan hanya N terbaru.
+    """Remove old backups, keeping only N newest.
 
     Args:
         domain: Domain name.
-        keep: Jumlah backup yang disimpan.
+        keep: Number of backups to keep.
     """
     if not BACKUP_DIR.exists():
         return
@@ -180,7 +180,7 @@ def cleanup_old_backups(domain: str, keep: int = 5) -> None:
 
 
 def test_nginx_config() -> tuple[bool, str]:
-    """Test konfigurasi nginx.
+    """Test Nginx configuration syntax.
 
     Returns:
         Tuple of (success, output_message).
@@ -194,7 +194,7 @@ def test_nginx_config() -> tuple[bool, str]:
 
 
 def reload_nginx() -> tuple[bool, str]:
-    """Reload nginx setelah config berubah.
+    """Reload Nginx service after configuration changes.
 
     Returns:
         Tuple of (success, output_message).
@@ -211,10 +211,10 @@ def reload_nginx() -> tuple[bool, str]:
 
 
 def list_active_configs() -> list[dict]:
-    """Parse semua config files di conf.d/ dan extract informasi domain.
+    """Parse all configuration files in conf.d/ and extract domain metadata.
 
     Returns:
-        List of dicts dengan keys: domain, target, config_file, has_ssl.
+        List of dicts with keys: domain, target, config_file, has_ssl, cert_domain.
     """
     configs = []
 
@@ -229,13 +229,13 @@ def list_active_configs() -> list[dict]:
 
         # Extract server_name
         server_names = re.findall(r"server_name\s+([^;]+);", content)
-        domain = conf_file.stem  # Filename tanpa .conf
+        domain = conf_file.stem  # Filename without .conf
 
         # Extract proxy_pass target
         proxy_targets = re.findall(r"proxy_pass\s+http://([^;]+);", content)
         target = proxy_targets[0].strip() if proxy_targets else "-"
 
-        # Cek apakah config punya SSL & domain sertifikatnya
+        # Check SSL certificate configuration and domain path
         has_ssl = "ssl_certificate" in content
         cert_domain_matches = re.findall(r"ssl_certificate\s+/etc/letsencrypt/live/([^/]+)/fullchain\.pem;", content)
         cert_domain = cert_domain_matches[0] if cert_domain_matches else domain

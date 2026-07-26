@@ -1,4 +1,4 @@
-"""Installer module — meng-install Docker, Docker Compose, setup network & start services."""
+"""Installer module — auto-install Docker & Docker Compose, setup network & launch containers."""
 
 from __future__ import annotations
 
@@ -22,12 +22,12 @@ console = Console()
 
 
 def is_docker_installed() -> bool:
-    """Cek apakah docker sudah terinstall."""
+    """Check if docker executable is available."""
     return shutil.which("docker") is not None
 
 
 def is_docker_compose_available() -> bool:
-    """Cek apakah docker compose v2 tersedia."""
+    """Check if docker compose v2 plugin is available."""
     try:
         res = subprocess.run(["docker", "compose", "version"], capture_output=True, text=True)
         return res.returncode == 0
@@ -36,20 +36,18 @@ def is_docker_compose_available() -> bool:
 
 
 def install_docker() -> bool:
-    """Install Docker & Docker Compose plugin secara otomatis di Linux.
-
-    Menggunakan official get.docker.com script.
+    """Auto-install Docker & Docker Compose plugin on Linux using official get.docker.com script.
 
     Returns:
-        True jika sukses.
+        True if installation succeeded.
     """
-    console.print("\n[bold yellow]📦 Docker / Docker Compose tidak ditemukan.[/bold yellow]")
-    console.print("[yellow]Meng-install Docker & Docker Compose via official script (get.docker.com)...[/yellow]\n")
+    console.print("\n[bold yellow]📦 Docker / Docker Compose not found.[/bold yellow]")
+    console.print("[yellow]Installing Docker & Docker Compose via official script (get.docker.com)...[/yellow]\n")
 
     if sys.platform not in ("linux", "linux2"):
         console.print(
-            "[red]✗ Auto-install Docker hanya didukung di Linux (Ubuntu/Debian/CentOS/RHEL/Arch).[/red]\n"
-            "[dim]Di macOS/Windows, silakan install Docker Desktop secara manual.[/dim]"
+            "[red]✗ Automated Docker installation is supported on Linux only (Ubuntu/Debian/CentOS/RHEL/Arch).[/red]\n"
+            "[dim]On macOS/Windows, please install Docker Desktop manually.[/dim]"
         )
         return False
 
@@ -60,32 +58,32 @@ def install_docker() -> bool:
             if shutil.which("sudo"):
                 cmd = f"sudo {cmd}"
             else:
-                console.print("[red]✗ Membutuhkan akses root / sudo untuk install Docker.[/red]")
+                console.print("[red]✗ Root / sudo permissions required to install Docker.[/red]")
                 return False
 
         console.print(f"[dim]Executing: {cmd}[/dim]\n")
         res = subprocess.run(cmd, shell=True)
 
         if res.returncode != 0:
-            console.print("[red]✗ Gagal meng-install Docker.[/red]")
+            console.print("[red]✗ Failed to install Docker.[/red]")
             return False
 
         # Start and enable docker service
         if shutil.which("systemctl"):
             subprocess.run(["sudo", "systemctl", "enable", "--now", "docker"], check=False)
 
-        console.print("[green]✓[/green] Docker & Docker Compose berhasil terinstall!")
+        console.print("[green]✓[/green] Docker & Docker Compose successfully installed!")
         return True
 
     except Exception as e:
-        console.print(f"[red]✗ Error saat install Docker: {e}[/red]")
+        console.print(f"[red]✗ Error installing Docker: {e}[/red]")
         return False
 
 
 def setup_vps_environment() -> bool:
-    """Jalankan full VPS setup:
+    """Run automated VPS setup:
     1. Check/Install Docker & Docker Compose
-    2. Ensure Docker daemon running
+    2. Ensure Docker daemon is running
     3. Create nginx-network
     4. Start Nginx & Certbot containers
     """
@@ -99,24 +97,24 @@ def setup_vps_environment() -> bool:
         if not install_docker():
             return False
     else:
-        console.print("[green]✓[/green] Docker & Docker Compose sudah terinstall.")
+        console.print("[green]✓[/green] Docker & Docker Compose are already installed.")
 
     # 2. Check Docker daemon running
     try:
         run_command(["docker", "info"], check=True)
-        console.print("[green]✓[/green] Docker daemon berjalan.")
+        console.print("[green]✓[/green] Docker daemon is running.")
     except Exception:
-        console.print("[yellow]Docker daemon belum berjalan. Memulai service...[/yellow]")
+        console.print("[yellow]Docker daemon is not running. Starting service...[/yellow]")
         try:
             if shutil.which("systemctl"):
                 cmd = ["sudo", "systemctl", "start", "docker"] if os.geteuid() != 0 else ["systemctl", "start", "docker"]
                 subprocess.run(cmd, check=True)
-                console.print("[green]✓[/green] Docker daemon berhasil dijalankan.")
+                console.print("[green]✓[/green] Docker daemon successfully started.")
             else:
-                console.print("[red]✗ Tidak dapat me-restart Docker daemon secara otomatis.[/red]")
+                console.print("[red]✗ Unable to start Docker daemon automatically.[/red]")
                 return False
         except Exception as e:
-            console.print(f"[red]✗ Gagal menjalankan Docker daemon: {e}[/red]")
+            console.print(f"[red]✗ Failed to start Docker daemon: {e}[/red]")
             return False
 
     # 3. Create Docker Network
@@ -124,7 +122,7 @@ def setup_vps_environment() -> bool:
     try:
         ensure_network_exists()
     except Exception as e:
-        console.print(f"[red]✗ Gagal membuat docker network: {e}[/red]")
+        console.print(f"[red]✗ Failed to create Docker network: {e}[/red]")
         return False
 
     # 4. Start Docker Compose Services
@@ -132,11 +130,11 @@ def setup_vps_environment() -> bool:
     try:
         docker_compose_up()
         if is_container_running("nginx"):
-            console.print("[bold green]✅ Setup selesai! Nginx & Certbot container aktif.[/bold green]\n")
+            console.print("[bold green]✅ Setup complete! Nginx & Certbot containers are active.[/bold green]\n")
             return True
         else:
-            console.print("[yellow]⚠ Container docker compose belum berjalan sepenuhnya. Cek docker logs.[/yellow]\n")
+            console.print("[yellow]⚠ Docker Compose containers are not running yet. Check docker logs.[/yellow]\n")
             return False
     except Exception as e:
-        console.print(f"[red]✗ Error saat menjalankan docker compose: {e}[/red]")
+        console.print(f"[red]✗ Error starting docker compose services: {e}[/red]")
         return False

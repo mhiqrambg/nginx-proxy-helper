@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nginx-proxy-helper"
 version = "1.0.0"
-description = "CLI tool untuk mengelola reverse proxy Nginx + SSL Certbot di VPS via Docker Compose"
+description = "CLI tool to manage Nginx reverse proxy + SSL Certbot on VPS using Docker Compose"
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}

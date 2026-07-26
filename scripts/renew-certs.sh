@@ -1,30 +1,23 @@
 #!/bin/bash
 # ============================================================
-# renew-certs.sh
-# Script untuk auto-renew SSL certificates via crontab
-#
-# Setup crontab (renew setiap hari jam 3 pagi):
-#   0 3 * * * /path/to/nginx-proxy-helper/scripts/renew-certs.sh >> /var/log/certbot-renew.log 2>&1
+# Automatic SSL Certificate Renewal Script for Crontab
+# Usage: 0 3 * * * /path/to/renew-certs.sh >> /var/log/certbot-renew.log 2>&1
 # ============================================================
 
 set -e
 
-# Navigasi ke project directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-COMPOSE_DIR="$PROJECT_DIR/nginx-alpine"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+COMPOSE_DIR="$PROJECT_ROOT/nginx-alpine"
 
-echo "============================================"
-echo "Certbot Auto-Renewal — $(date)"
-echo "============================================"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting SSL certificate renewal check..."
 
-# Renew certificates
-echo "[1/2] Renewing certificates..."
-docker compose -f "$COMPOSE_DIR/docker-compose.yml" run --rm certbot renew
+# 1. Run certbot renew via Docker Compose
+cd "$COMPOSE_DIR"
+docker compose run --rm --entrypoint certbot certbot renew
 
-# Reload nginx
-echo "[2/2] Reloading nginx..."
+# 2. Reload Nginx service
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Reloading Nginx service..."
 docker exec nginx nginx -s reload
 
-echo "✓ Renewal complete — $(date)"
-echo ""
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Renewal process completed successfully."

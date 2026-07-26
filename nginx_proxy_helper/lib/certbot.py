@@ -1,4 +1,4 @@
-"""Certbot helper — request, renew, dan manage SSL certificates."""
+"""Certbot helper — request, renew, and manage SSL certificates."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ console = Console()
 
 
 class CertbotError(Exception):
-    """Error saat operasi certbot."""
+    """Exception raised for Certbot operations."""
     pass
 
 
@@ -28,44 +28,37 @@ class CertbotError(Exception):
 
 
 def cert_dir(domain: str) -> Path:
-    """Dapatkan path directory sertifikat untuk domain."""
+    """Get certificate directory path for domain."""
     return CERTBOT_CONF_DIR / "live" / domain
 
 
 def cert_exists(domain: str) -> bool:
-    """Cek apakah sertifikat untuk domain sudah ada."""
+    """Check if SSL certificate files exist for domain."""
     d = cert_dir(domain)
     return (d / "fullchain.pem").exists() and (d / "privkey.pem").exists()
 
 
 def get_cert_expiry(domain: str) -> Optional[datetime]:
-    """Baca expiry date dari sertifikat.
-
-    Menggunakan openssl via python untuk membaca cert file.
+    """Read certificate expiry datetime.
 
     Args:
         domain: Domain name.
 
     Returns:
-        Expiry datetime, atau None jika cert tidak ada.
+        Expiry datetime (timezone-aware UTC), or None if cert does not exist.
     """
     cert_path = cert_dir(domain) / "fullchain.pem"
     if not cert_path.exists():
         return None
 
     try:
-        import ssl
-        cert = ssl.PEM_cert_to_DER_cert(
-            cert_path.read_text().split("-----END CERTIFICATE-----")[0]
-            + "-----END CERTIFICATE-----"
-        )
-        # Decode ASN.1 to get expiry — kita pakai cara sederhana via openssl subprocess
         from nginx_proxy_helper.lib.docker import run_command
         result = run_command(
             ["openssl", "x509", "-enddate", "-noout", "-in", str(cert_path)],
             check=False,
         )
         if result.returncode == 0 and result.stdout:
+            # Output format: notAfter=Jul 26 12:00:00 2026 GMT
             date_str = result.stdout.strip().split("=", 1)[1]
             parsed_dt = datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
             return parsed_dt.replace(tzinfo=timezone.utc)
@@ -76,13 +69,13 @@ def get_cert_expiry(domain: str) -> Optional[datetime]:
 
 
 def get_cert_status(domain: str) -> str:
-    """Dapatkan status sertifikat sebagai string yang readable.
+    """Get human-readable certificate status string.
 
     Args:
         domain: Domain name.
 
     Returns:
-        Status string: "Valid (XX days)", "Expiring soon (XX days)", "Expired", atau "No certificate".
+        Status string: "Valid (XX days left)", "Expiring soon (XX days left)", "Expired", or "No certificate".
     """
     if not cert_exists(domain):
         return "❌ No certificate"
@@ -113,15 +106,15 @@ def request_certificate(
     """Request SSL certificate via certbot certonly.
 
     Args:
-        domain: Domain utama.
-        www: Jika True, tambahkan www.domain.
-        email: Email untuk Let's Encrypt. Pakai DEFAULT_EMAIL jika tidak diset.
+        domain: Primary domain name.
+        www: If True, include www.domain.
+        email: Email address for Let's Encrypt notifications.
 
     Returns:
-        True jika berhasil.
+        True if successful.
 
     Raises:
-        CertbotError: Jika certbot gagal.
+        CertbotError: If certbot execution fails.
     """
     email = email or DEFAULT_EMAIL
 
@@ -153,7 +146,7 @@ def request_certificate(
     if result.returncode != 0:
         output = (result.stderr or result.stdout or "").strip()
         raise CertbotError(
-            f"Certbot gagal request certificate:\n{output}"
+            f"Certbot failed to obtain SSL certificate:\n{output}"
         )
 
     console.print(f"[green]✓[/green] SSL certificate obtained for {domain}")
@@ -165,18 +158,18 @@ def request_subdomain_certificate(
     reuse_parent: bool = True,
     email: Optional[str] = None,
 ) -> str:
-    """Request SSL certificate untuk subdomain.
+    """Request SSL certificate for a subdomain.
 
     Args:
-        subdomain: Subdomain (e.g., "api.example.com").
-        reuse_parent: Jika True, expand parent domain cert. Jika False, request cert terpisah.
-        email: Email untuk Let's Encrypt.
+        subdomain: Subdomain name (e.g., "api.example.com").
+        reuse_parent: If True, expand parent domain cert. If False, request separate cert.
+        email: Email address for Let's Encrypt.
 
     Returns:
-        cert_domain — domain name yang dipakai untuk path sertifikat.
+        cert_domain — domain name used for the certificate directory path.
 
     Raises:
-        CertbotError: Jika certbot gagal.
+        CertbotError: If certbot execution fails.
     """
     from nginx_proxy_helper.lib.dns import get_parent_domain
 
@@ -184,7 +177,7 @@ def request_subdomain_certificate(
     email = email or DEFAULT_EMAIL
 
     if reuse_parent and parent and cert_exists(parent):
-        # Expand sertifikat parent domain
+        # Expand parent domain certificate
         console.print(
             f"[yellow]Expanding parent certificate ({parent}) "
             f"to include {subdomain}...[/yellow]"
@@ -201,10 +194,7 @@ def request_subdomain_certificate(
             "-d", subdomain,
         ]
 
-        # Cek apakah www.parent juga ada di cert sebelumnya
-        www_parent_cert = cert_dir(parent) / "fullchain.pem"
         if (CERTBOT_CONF_DIR / "live" / parent).exists():
-            # Tambahkan www jika sebelumnya ada
             renewal_conf = CERTBOT_CONF_DIR / "renewal" / f"{parent}.conf"
             if renewal_conf.exists():
                 renewal_content = renewal_conf.read_text()
@@ -226,19 +216,19 @@ def request_subdomain_certificate(
         if result.returncode != 0:
             output = (result.stderr or result.stdout or "").strip()
             raise CertbotError(
-                f"Certbot gagal expand certificate:\n{output}\n\n"
-                f"Coba jalankan dengan --separate-cert untuk request cert terpisah."
+                f"Certbot failed to expand certificate:\n{output}\n\n"
+                f"Try running with --separate-cert to request an isolated certificate."
             )
 
         console.print(f"[green]✓[/green] Certificate expanded to include {subdomain}")
         return parent  # cert_domain = parent
 
     else:
-        # Request sertifikat terpisah untuk subdomain
+        # Request separate certificate for subdomain
         if reuse_parent and parent:
             console.print(
-                f"[dim]Parent cert ({parent}) tidak ditemukan, "
-                f"requesting separate certificate...[/dim]"
+                f"[dim]Parent certificate ({parent}) not found. "
+                f"Requesting separate certificate...[/dim]"
             )
 
         console.print(
@@ -269,7 +259,7 @@ def request_subdomain_certificate(
         if result.returncode != 0:
             output = (result.stderr or result.stdout or "").strip()
             raise CertbotError(
-                f"Certbot gagal request certificate:\n{output}"
+                f"Certbot failed to obtain SSL certificate:\n{output}"
             )
 
         console.print(f"[green]✓[/green] SSL certificate obtained for {subdomain}")
@@ -280,7 +270,7 @@ def request_subdomain_certificate(
 
 
 def renew_certificates() -> tuple[bool, str]:
-    """Jalankan certbot renew untuk semua certificate.
+    """Run certbot renew for all certificates.
 
     Returns:
         Tuple of (success, output_message).
@@ -304,13 +294,13 @@ def renew_certificates() -> tuple[bool, str]:
 
 
 def remove_certificate(domain: str) -> bool:
-    """Hapus sertifikat untuk domain via certbot.
+    """Remove certificate files for domain via certbot.
 
     Args:
         domain: Domain name.
 
     Returns:
-        True jika berhasil dihapus.
+        True if successfully removed.
     """
     if not cert_exists(domain):
         console.print(f"[dim]No certificate found for {domain}[/dim]")

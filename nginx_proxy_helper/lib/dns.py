@@ -1,4 +1,4 @@
-"""DNS helper — resolusi domain dan validasi A record."""
+"""DNS helper — domain resolution and A record validation."""
 
 from __future__ import annotations
 
@@ -15,20 +15,20 @@ console = Console()
 
 
 class DNSError(Exception):
-    """Error saat DNS lookup."""
+    """Exception raised for DNS errors."""
     pass
 
 
 def get_public_ip() -> str:
-    """Dapatkan public IP dari VPS/machine saat ini.
+    """Get public IP address of the current machine/VPS.
 
-    Mencoba beberapa service secara berurutan sebagai fallback.
+    Tries multiple external IP resolution services in sequence.
 
     Returns:
-        Public IP address sebagai string.
+        Public IP address as string.
 
     Raises:
-        DNSError: Jika gagal mendapatkan public IP.
+        DNSError: If unable to retrieve public IP.
     """
     services = [
         "https://ifconfig.me/ip",
@@ -48,13 +48,13 @@ def get_public_ip() -> str:
             continue
 
     raise DNSError(
-        "Gagal mendapatkan public IP. "
-        "Pastikan VPS terhubung ke internet."
+        "Failed to retrieve VPS public IP address. "
+        "Ensure your VPS is connected to the internet."
     )
 
 
 def _is_valid_ip(ip: str) -> bool:
-    """Validasi apakah string adalah IP address yang valid."""
+    """Validate if a string is a valid IP address."""
     try:
         socket.inet_aton(ip)
         return True
@@ -63,43 +63,43 @@ def _is_valid_ip(ip: str) -> bool:
 
 
 def resolve_domain(domain: str) -> list[str]:
-    """Resolve A record dari domain.
+    """Resolve A records for a domain.
 
     Args:
-        domain: Domain name yang akan di-resolve.
+        domain: Domain name to resolve.
 
     Returns:
-        List of IP addresses yang di-resolve.
+        List of resolved IP addresses.
 
     Raises:
-        DNSError: Jika domain tidak bisa di-resolve.
+        DNSError: If domain resolution fails.
     """
     try:
         answers = dns.resolver.resolve(domain, "A")
         return [rdata.address for rdata in answers]
     except dns.resolver.NXDOMAIN:
-        raise DNSError(f"Domain '{domain}' tidak ditemukan (NXDOMAIN)")
+        raise DNSError(f"Domain '{domain}' not found (NXDOMAIN)")
     except dns.resolver.NoAnswer:
-        raise DNSError(f"Domain '{domain}' tidak punya A record")
+        raise DNSError(f"Domain '{domain}' has no A records")
     except dns.resolver.NoNameservers:
-        raise DNSError(f"Tidak ada nameserver yang bisa menjawab untuk '{domain}'")
+        raise DNSError(f"No nameservers available to answer for '{domain}'")
     except dns.exception.Timeout:
-        raise DNSError(f"DNS lookup timeout untuk '{domain}'")
+        raise DNSError(f"DNS resolution timed out for '{domain}'")
     except Exception as e:
-        raise DNSError(f"DNS lookup gagal untuk '{domain}': {e}")
+        raise DNSError(f"DNS resolution failed for '{domain}': {e}")
 
 
 def check_domain_points_to_vps(domain: str) -> tuple[bool, str, list[str]]:
-    """Cek apakah domain sudah mengarah ke IP VPS.
+    """Check if a domain's A record points to this VPS's public IP.
 
     Args:
-        domain: Domain yang akan dicek.
+        domain: Domain name to check.
 
     Returns:
-        Tuple of (match, vps_ip, resolved_ips).
+        Tuple of (is_match, vps_ip, resolved_ips).
 
     Raises:
-        DNSError: Jika gagal resolve atau gagal dapatkan VPS IP.
+        DNSError: If resolution or public IP check fails.
     """
     vps_ip = get_public_ip()
     resolved_ips = resolve_domain(domain)
@@ -113,17 +113,16 @@ def print_dns_check_result(
     vps_ip: str,
     resolved_ips: list[str],
 ) -> None:
-    """Tampilkan hasil DNS check dalam format yang informatif.
+    """Display DNS check results in a formatted Rich table.
 
     Args:
-        domain: Domain yang dicek.
-        match: Apakah DNS match dengan VPS IP.
-        vps_ip: IP VPS saat ini.
-        resolved_ips: List IP yang di-resolve.
+        domain: Domain name checked.
+        match: Whether DNS points to VPS IP.
+        vps_ip: Current VPS public IP.
+        resolved_ips: List of resolved IP addresses.
     """
     console.print()
 
-    # Tabel hasil resolve saat ini
     table = Table(title=f"DNS Resolution: {domain}")
     table.add_column("Type", style="cyan")
     table.add_column("Name", style="white")
@@ -138,20 +137,20 @@ def print_dns_check_result(
     console.print(f"\n[dim]VPS Public IP: {vps_ip}[/dim]")
 
     if match:
-        console.print(f"\n[green]✓ Domain '{domain}' sudah mengarah ke VPS ini![/green]")
+        console.print(f"\n[green]✓ Domain '{domain}' successfully points to this VPS![/green]")
     else:
-        console.print(f"\n[red]✗ Domain '{domain}' BELUM mengarah ke VPS ini![/red]")
+        console.print(f"\n[red]✗ Domain '{domain}' DOES NOT point to this VPS IP address![/red]")
         print_dns_instructions(domain, vps_ip)
 
 
 def print_dns_instructions(domain: str, vps_ip: str) -> None:
-    """Tampilkan instruksi DNS record yang perlu ditambahkan.
+    """Display DNS record configuration instructions.
 
     Args:
-        domain: Domain yang perlu disetup.
-        vps_ip: IP VPS tujuan.
+        domain: Target domain.
+        vps_ip: Target VPS IP.
     """
-    console.print("\n[bold yellow]Tambahkan DNS record berikut di domain registrar Anda:[/bold yellow]\n")
+    console.print("\n[bold yellow]Please add the following DNS A record at your domain registrar:[/bold yellow]\n")
 
     table = Table()
     table.add_column("Type", style="cyan", justify="center")
@@ -159,32 +158,29 @@ def print_dns_instructions(domain: str, vps_ip: str) -> None:
     table.add_column("Value", style="green")
     table.add_column("TTL", style="dim")
 
-    # Determine if this is a subdomain
     parts = domain.split(".")
     if len(parts) > 2:
-        # Subdomain: e.g., api.example.com → Name = "api"
         name = ".".join(parts[:-2])
     else:
-        # Root domain: e.g., example.com → Name = "@"
         name = "@"
 
     table.add_row("A", name, vps_ip, "3600")
 
     console.print(table)
     console.print(
-        "\n[dim]Setelah menambahkan record, tunggu propagasi DNS (biasanya 5-30 menit).\n"
-        "Kemudian jalankan ulang command ini.[/dim]"
+        "\n[dim]After adding the record, wait for DNS propagation (typically 5-30 minutes),\n"
+        "then run this command again.[/dim]"
     )
 
 
 def get_parent_domain(subdomain: str) -> Optional[str]:
-    """Extract parent domain dari subdomain.
+    """Extract parent domain from a subdomain string.
 
     Args:
         subdomain: e.g., "api.example.com"
 
     Returns:
-        Parent domain, e.g., "example.com", atau None jika bukan subdomain.
+        Parent domain string e.g. "example.com", or None if not a subdomain.
     """
     parts = subdomain.split(".")
     if len(parts) > 2:
@@ -193,5 +189,5 @@ def get_parent_domain(subdomain: str) -> Optional[str]:
 
 
 def is_subdomain(domain: str) -> bool:
-    """Cek apakah domain adalah subdomain (punya > 2 parts)."""
+    """Check if domain is a subdomain (has > 2 labels)."""
     return len(domain.split(".")) > 2

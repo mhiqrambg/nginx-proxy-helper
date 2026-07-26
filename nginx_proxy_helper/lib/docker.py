@@ -1,4 +1,4 @@
-"""Docker helper — menjalankan docker exec dan docker compose commands."""
+"""Docker helper — docker exec, compose, and container network operations."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ console = Console()
 
 
 class DockerError(Exception):
-    """Error saat menjalankan docker command."""
+    """Exception raised for Docker execution errors."""
     pass
 
 
@@ -28,19 +28,19 @@ def run_command(
     capture: bool = True,
     check: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Jalankan shell command dengan error handling.
+    """Run shell command with error handling.
 
     Args:
-        cmd: Command dan arguments sebagai list.
+        cmd: Command and arguments list.
         cwd: Working directory.
-        capture: Capture stdout/stderr atau tampilkan langsung.
-        check: Raise exception jika return code != 0.
+        capture: Capture stdout/stderr or display directly.
+        check: Raise exception if return code != 0.
 
     Returns:
         CompletedProcess result.
 
     Raises:
-        DockerError: Jika command gagal dan check=True.
+        DockerError: If command fails and check=True.
     """
     try:
         result = subprocess.run(
@@ -58,15 +58,15 @@ def run_command(
         return result
     except FileNotFoundError:
         raise DockerError(
-            f"Command tidak ditemukan: {cmd[0]}. "
-            f"Pastikan docker sudah terinstall."
+            f"Command not found: {cmd[0]}. "
+            f"Ensure Docker is installed and in your PATH."
         )
     except subprocess.TimeoutExpired:
-        raise DockerError(f"Command timeout setelah 120 detik: {' '.join(cmd)}")
+        raise DockerError(f"Command timed out after 120 seconds: {' '.join(cmd)}")
 
 
 def ensure_network_exists() -> None:
-    """Buat docker network 'nginx-network' jika belum ada."""
+    """Create docker network 'nginx-network' if it does not exist."""
     result = run_command(
         ["docker", "network", "ls", "--format", "{{.Name}}"],
         check=False,
@@ -74,7 +74,7 @@ def ensure_network_exists() -> None:
     existing = result.stdout.strip().split("\n") if result.stdout else []
 
     if DOCKER_NETWORK not in existing:
-        console.print(f"[yellow]Creating docker network '{DOCKER_NETWORK}'...[/yellow]")
+        console.print(f"[yellow]Creating Docker network '{DOCKER_NETWORK}'...[/yellow]")
         run_command(["docker", "network", "create", DOCKER_NETWORK])
         console.print(f"[green]✓[/green] Network '{DOCKER_NETWORK}' created")
     else:
@@ -82,11 +82,11 @@ def ensure_network_exists() -> None:
 
 
 def docker_exec(container: str, command: str) -> subprocess.CompletedProcess:
-    """Jalankan command di dalam docker container.
+    """Execute command inside a running Docker container.
 
     Args:
-        container: Nama container.
-        command: Command string yang akan dijalankan.
+        container: Container name.
+        command: Command string to execute.
 
     Returns:
         CompletedProcess result.
@@ -97,17 +97,17 @@ def docker_exec(container: str, command: str) -> subprocess.CompletedProcess:
 
 
 def docker_compose_up() -> None:
-    """Start docker compose services."""
-    console.print("[yellow]Starting docker compose services...[/yellow]")
+    """Start Docker Compose services."""
+    console.print("[yellow]Starting Docker Compose services...[/yellow]")
     run_command(
         ["docker", "compose", "up", "-d"],
         cwd=str(COMPOSE_DIR),
     )
-    console.print("[green]✓[/green] Docker compose services started")
+    console.print("[green]✓[/green] Docker Compose services started")
 
 
 def docker_compose_down() -> None:
-    """Stop docker compose services."""
+    """Stop Docker Compose services."""
     run_command(
         ["docker", "compose", "down"],
         cwd=str(COMPOSE_DIR),
@@ -115,7 +115,7 @@ def docker_compose_down() -> None:
 
 
 def is_container_running(container: str = NGINX_CONTAINER_NAME) -> bool:
-    """Cek apakah container sedang berjalan."""
+    """Check if a container is currently running."""
     result = run_command(
         ["docker", "inspect", "-f", "{{.State.Running}}", container],
         check=False,
@@ -124,10 +124,10 @@ def is_container_running(container: str = NGINX_CONTAINER_NAME) -> bool:
 
 
 def ensure_nginx_running() -> None:
-    """Pastikan nginx container sedang berjalan, start jika belum.
+    """Ensure Nginx container is running, start if stopped.
 
     Raises:
-        DockerError: Jika tidak bisa start nginx.
+        DockerError: If unable to start Nginx container.
     """
     if not is_container_running():
         console.print("[yellow]Nginx container not running. Starting...[/yellow]")
@@ -136,16 +136,16 @@ def ensure_nginx_running() -> None:
 
         if not is_container_running():
             raise DockerError(
-                "Gagal start nginx container. "
-                "Cek docker compose logs untuk detail."
+                "Failed to start Nginx container. "
+                "Check docker compose logs for details."
             )
 
 
 def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
-    """Jalankan certbot via docker run (one-shot container).
+    """Run certbot via docker run (one-shot container).
 
     Args:
-        args: Arguments untuk certbot command.
+        args: Arguments for certbot command.
 
     Returns:
         CompletedProcess result.
@@ -160,7 +160,7 @@ def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
 
 
 def get_containers_in_network(network_name: str = DOCKER_NETWORK) -> set[str]:
-    """Dapatkan set nama container yang terhubung ke docker network."""
+    """Get set of container names connected to a Docker network."""
     res = run_command(
         ["docker", "network", "inspect", network_name, "--format", "{{range .Containers}}{{.Name}} {{end}}"],
         check=False,
@@ -171,13 +171,13 @@ def get_containers_in_network(network_name: str = DOCKER_NETWORK) -> set[str]:
 
 
 def check_target_network_status(target: str) -> None:
-    """Cek apakah target container terhubung ke network 'nginx-network'.
+    """Check if target container is connected to 'nginx-network'.
 
-    Jika target adalah container:
-      - Otomatis menghubungkan container ke 'nginx-network' jika belum terhubung.
+    If target is a container:
+      - Automatically connects container to 'nginx-network' if missing.
 
-    Jika target menggunakan host.docker.internal/localhost:
-      - Mencari container yang cocok dan memberikan saran optimasi.
+    If target uses host.docker.internal / localhost:
+      - Searches for matching containers and provides smart recommendations.
 
     Args:
         target: Target proxy string (e.g. "9router:20128", "host.docker.internal:20128").
@@ -188,48 +188,48 @@ def check_target_network_status(target: str) -> None:
     parts = target.split(":", 1)
     host, port = parts[0].strip(), parts[1].strip()
 
-    # Case 1: Target adalah container name (misal: "9router")
+    # Case 1: Target is a container name (e.g., "9router")
     if host not in ("host.docker.internal", "localhost", "127.0.0.1", "0.0.0.0"):
         res = run_command(["docker", "inspect", "-f", "{{.State.Running}}", host], check=False)
         if res.returncode == 0 and res.stdout.strip() == "true":
-            # Container ditemukan & running! Cek koneksi ke nginx-network via docker network inspect
+            # Container exists & running! Check network connection
             net_containers = get_containers_in_network(DOCKER_NETWORK)
             is_connected = host in net_containers
 
             if not is_connected:
                 console.print(
-                    f"\n[bold yellow]⚠ Warning: Target container '{host}' belum berada di network '{DOCKER_NETWORK}'.[/bold yellow]\n"
-                    f"[cyan]⚡ Mencoba menghubungkan '{host}' ke '{DOCKER_NETWORK}' secara otomatis...[/cyan]"
+                    f"\n[bold yellow]⚠ Warning: Target container '{host}' is not connected to '{DOCKER_NETWORK}'.[/bold yellow]\n"
+                    f"[cyan]⚡ Attempting to connect '{host}' to '{DOCKER_NETWORK}' automatically...[/cyan]"
                 )
                 conn_res = run_command(["docker", "network", "connect", DOCKER_NETWORK, host], check=False)
 
-                # Re-check setelah connect
+                # Re-check after connect attempt
                 if conn_res.returncode == 0 and host in get_containers_in_network(DOCKER_NETWORK):
-                    console.print(f"[green]✓[/green] Container '{host}' berhasil dihubungkan ke '{DOCKER_NETWORK}'!")
+                    console.print(f"[green]✓[/green] Container '{host}' successfully connected to '{DOCKER_NETWORK}'!")
                 else:
                     raise DockerError(
-                        f"Target container '{host}' belum terhubung ke network '{DOCKER_NETWORK}'.\n\n"
+                        f"Target container '{host}' is not connected to network '{DOCKER_NETWORK}'.\n\n"
                         f"💡 Solution:\n"
-                        f"  Jalankan perintah ini di terminal VPS Anda:\n"
+                        f"  Run this command on your VPS terminal:\n"
                         f"    docker network connect {DOCKER_NETWORK} {host}\n\n"
-                        f"  Lalu jalankan ulang perintah proxy add-domain."
+                        f"  Then re-run proxy add-domain."
                     )
             else:
-                console.print(f"[green]✓[/green] Target container '{host}' terverifikasi berada di network '{DOCKER_NETWORK}'")
+                console.print(f"[green]✓[/green] Target container '{host}' verified on network '{DOCKER_NETWORK}'")
             return
         else:
-            # Container tidak ditemukan atau tidak running
+            # Container not found or not running
             raise DockerError(
-                f"Target container '{host}' tidak ditemukan atau tidak sedang berjalan.\n\n"
+                f"Target container '{host}' not found or not currently running.\n\n"
                 f"💡 Solution & Troubleshooting:\n"
-                f"  1. Cek nama container yang berjalan dengan: docker ps\n"
-                f"  2. Jika container berjalan, hubungkan ke network:\n"
+                f"  1. Check running container names with: docker ps\n"
+                f"  2. If container is running, connect it to the network:\n"
                 f"     docker network connect {DOCKER_NETWORK} {host}\n"
-                f"  3. Atau jika service berjalan langsung di VPS host, gunakan:\n"
+                f"  3. Or if service runs directly on VPS host, use:\n"
                 f"     --target host.docker.internal:{port}"
             )
 
-    # Case 2: Target menggunakan host.docker.internal / localhost
+    # Case 2: Target uses host.docker.internal / localhost
     ps_res = run_command(["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"], check=False)
     if ps_res.returncode == 0 and ps_res.stdout:
         found_containers = []
@@ -243,22 +243,18 @@ def check_target_network_status(target: str) -> None:
         if found_containers:
             console.print(f"\n[bold yellow]💡 Smart Target Suggestion:[/bold yellow]")
             for c_name, c_ports in found_containers:
-                net_check = run_command(
-                    ["docker", "inspect", "-f", f"{{{{index .NetworkSettings.Networks \"{DOCKER_NETWORK}\"}}}}", c_name],
-                    check=False,
-                )
-                is_connected = net_check.returncode == 0 and "<no value>" not in net_check.stdout
+                net_containers = get_containers_in_network(DOCKER_NETWORK)
+                is_connected = c_name in net_containers
 
                 if not is_connected:
                     console.print(
-                        f"  Ditemukan container [cyan]'{c_name}'[/cyan] dengan port {port}.\n"
-                        f"  [yellow]Rekomendasi:[/yellow] Hubungkan ke network agar proxy lancar:\n"
+                        f"  Found container [cyan]'{c_name}'[/cyan] matching port {port}.\n"
+                        f"  [yellow]Recommendation:[/yellow] Connect to network for direct proxying:\n"
                         f"    1. [white]docker network connect {DOCKER_NETWORK} {c_name}[/white]\n"
-                        f"    2. Gunakan target: [green]--target {c_name}:{port}[/green]"
+                        f"    2. Use target: [green]--target {c_name}:{port}[/green]"
                     )
                 else:
                     console.print(
-                        f"  Container [cyan]'{c_name}'[/cyan] terdeteksi di '{DOCKER_NETWORK}'.\n"
-                        f"  [green]Rekomendasi:[/green] Gunakan target container internal: [green]--target {c_name}:{port}[/green]"
+                        f"  Container [cyan]'{c_name}'[/cyan] detected on '{DOCKER_NETWORK}'.\n"
+                        f"  [green]Recommendation:[/green] Use container name as target: [green]--target {c_name}:{port}[/green]"
                     )
-

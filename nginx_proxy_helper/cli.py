@@ -1,4 +1,4 @@
-"""CLI entrypoint — semua command proxy didefinisikan di sini."""
+"""CLI entrypoint — all proxy subcommands defined here."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ console = Console()
 @click.group()
 @click.version_option(version=__version__, prog_name="nginx-proxy-helper")
 def cli():
-    """🔧 nginx-proxy-helper — Kelola reverse proxy Nginx + SSL Certbot di VPS."""
+    """🔧 nginx-proxy-helper — Manage Nginx reverse proxy + Let's Encrypt SSL on VPS."""
     ensure_directories()
 
 
@@ -64,17 +64,17 @@ def cli():
 
 @cli.command("add-domain")
 @click.argument("domain")
-@click.option("--target", required=True, help="Target proxy (e.g., app:3000)")
-@click.option("--www", is_flag=True, default=False, help="Tambahkan www.domain sebagai alias")
-@click.option("--email", default=None, help="Email untuk Let's Encrypt")
+@click.option("--target", required=True, help="Target proxy address (e.g., app:3000)")
+@click.option("--www", is_flag=True, default=False, help="Add www.domain as an alias")
+@click.option("--email", default=None, help="Email address for Let's Encrypt notifications")
 @click.option("--skip-dns-check", is_flag=True, default=False, help="Skip DNS validation")
-@click.option("--force", is_flag=True, default=False, help="Overwrite config yang sudah ada")
+@click.option("--force", is_flag=True, default=False, help="Overwrite existing configuration")
 def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: bool, force: bool):
-    """Tambahkan domain baru dengan reverse proxy + SSL.
+    """Add a new main domain with reverse proxy + SSL certificate.
 
-    Contoh:
+    Examples:
         proxy add-domain example.com --target app:3000 --www
-        proxy add-domain example.com --target localhost:8080
+        proxy add-domain example.com --target host.docker.internal:8080
     """
     console.print(Panel(
         f"[bold]Adding domain:[/bold] {domain}\n"
@@ -84,11 +84,11 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
         border_style="blue",
     ))
 
-    # Cek apakah config sudah ada
+    # Check if config exists
     if config_exists(domain) and not force:
         console.print(
-            f"\n[red]✗ Config untuk '{domain}' sudah ada![/red]\n"
-            f"[dim]Gunakan --force untuk overwrite.[/dim]"
+            f"\n[red]✗ Configuration for '{domain}' already exists![/red]\n"
+            f"[dim]Use --force to overwrite.[/dim]"
         )
         sys.exit(1)
 
@@ -99,31 +99,25 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
             match, vps_ip, resolved_ips = check_domain_points_to_vps(domain)
             print_dns_check_result(domain, match, vps_ip, resolved_ips)
 
-            if not match:
-                console.print("\n[red]Abort: DNS belum mengarah ke VPS ini.[/red]")
-                console.print("[dim]Setelah update DNS, jalankan ulang command ini.[/dim]")
-                sys.exit(1)
-
-            # Cek www juga jika diminta
             if www:
-                www_domain = f"www.{domain}"
-                console.print(f"\n[dim]Checking www alias: {www_domain}...[/dim]")
+                console.print(f"\nChecking www alias: www.{domain}...")
                 try:
-                    w_match, _, w_ips = check_domain_points_to_vps(www_domain)
-                    if not w_match:
+                    www_match, _, www_ips = check_domain_points_to_vps(f"www.{domain}")
+                    if not www_match:
                         console.print(
-                            f"[yellow]⚠ www.{domain} belum mengarah ke VPS.[/yellow]\n"
-                            f"[dim]Tambahkan CNAME record: www → {domain}[/dim]\n"
-                            f"[dim]Atau A record: www → {vps_ip}[/dim]\n"
+                            f"[yellow]⚠️ Warning: www.{domain} does not point to this VPS IP![/yellow]"
                         )
-                        if not click.confirm("Lanjutkan tanpa www?"):
-                            sys.exit(1)
-                        www = False
                 except DNSError:
-                    console.print(f"[yellow]⚠ www.{domain} tidak bisa di-resolve.[/yellow]")
-                    if not click.confirm("Lanjutkan tanpa www?"):
-                        sys.exit(1)
-                    www = False
+                    console.print(
+                        f"[yellow]⚠️ Warning: Failed to resolve www.{domain}[/yellow]"
+                    )
+
+            if not match:
+                console.print(
+                    "\n[red]✗ DNS check failed! Domain does not point to this VPS.[/red]\n"
+                    "[dim]Add the DNS record first, or use --skip-dns-check if you're sure.[/dim]"
+                )
+                sys.exit(1)
 
         except DNSError as e:
             console.print(f"\n[red]✗ DNS Error: {e}[/red]")
@@ -132,7 +126,7 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
         console.print("\n[bold]Step 1/5:[/bold] DNS check [yellow]SKIPPED[/yellow]")
 
     # Step 2: Ensure nginx is running
-    console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running...")
+    console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running & verifying target network...")
     try:
         ensure_nginx_running()
         check_target_network_status(target)
@@ -151,7 +145,7 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
         # Reload nginx with HTTP config
         success, msg = reload_nginx()
         if not success:
-            console.print(f"[red]✗ Nginx reload gagal: {msg}[/red]")
+            console.print(f"[red]✗ Nginx reload failed: {msg}[/red]")
             if backup_path:
                 restore_config(domain, backup_path)
             else:
@@ -185,37 +179,39 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
         ssl_config = render_ssl_config(domain, target, www=www)
         write_config(domain, ssl_config)
 
-        # Test config before reload
-        success, msg = test_nginx_config()
-        if not success:
-            console.print(f"[red]✗ Nginx config test gagal: {msg}[/red]")
+        # Test nginx config before reload
+        test_ok, test_msg = test_nginx_config()
+        if not test_ok:
+            console.print(f"[red]✗ Nginx config test failed: {test_msg}[/red]")
             console.print("[yellow]Rolling back to HTTP config...[/yellow]")
-            http_config = render_http_challenge_config(domain, www)
-            write_config(domain, http_config)
+            if backup_path:
+                restore_config(domain, backup_path)
+            else:
+                write_config(domain, http_config)
             reload_nginx()
             sys.exit(1)
 
-        # Reload with final config
-        success, msg = reload_nginx()
-        if not success:
-            console.print(f"[red]✗ Nginx reload gagal: {msg}[/red]")
+        # Reload nginx with SSL config
+        reload_ok, reload_msg = reload_nginx()
+        if not reload_ok:
+            console.print(f"[red]✗ Nginx reload failed: {reload_msg}[/red]")
+            if backup_path:
+                restore_config(domain, backup_path)
             sys.exit(1)
 
         cleanup_old_backups(domain)
 
     except Exception as e:
         console.print(f"[red]✗ Error applying SSL config: {e}[/red]")
-        # Rollback to HTTP config (cert sudah ada, bisa dicoba manual)
-        http_config = render_http_challenge_config(domain, www)
-        write_config(domain, http_config)
-        reload_nginx()
+        if backup_path:
+            restore_config(domain, backup_path)
         sys.exit(1)
 
-    # Done!
+    # Success!
     console.print(Panel(
-        f"[bold green]✓ Domain '{domain}' berhasil dikonfigurasi![/bold green]\n\n"
+        f"[green]✓ Domain '{domain}' successfully configured![/green]\n\n"
         f"  🌐 http://{domain} → https://{domain}\n"
-        f"  🔒 SSL certificate aktif\n"
+        f"  🔒 SSL Certificate Active\n"
         f"  🔄 Proxy target: {target}",
         title="✅ Success",
         border_style="green",
@@ -227,44 +223,52 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
 
 @cli.command("add-subdomain")
 @click.argument("subdomain")
-@click.option("--target", required=True, help="Target proxy (e.g., api:3000)")
-@click.option("--email", default=None, help="Email untuk Let's Encrypt")
-@click.option("--reuse-cert/--separate-cert", default=True,
-              help="Reuse sertifikat parent domain atau request terpisah")
+@click.option("--target", required=True, help="Target proxy address (e.g., api-service:8080)")
+@click.option("--separate-cert", is_flag=True, default=False,
+              help="Request separate SSL cert instead of reusing parent domain cert")
+@click.option("--email", default=None, help="Email address for Let's Encrypt notifications")
 @click.option("--skip-dns-check", is_flag=True, default=False, help="Skip DNS validation")
-@click.option("--force", is_flag=True, default=False, help="Overwrite config yang sudah ada")
-def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
-                  skip_dns_check: bool, force: bool):
-    """Tambahkan subdomain dengan reverse proxy + SSL.
+@click.option("--force", is_flag=True, default=False, help="Overwrite existing configuration")
+def add_subdomain(
+    subdomain: str,
+    target: str,
+    separate_cert: bool,
+    email: str,
+    skip_dns_check: bool,
+    force: bool,
+):
+    """Add a subdomain with reverse proxy + SSL.
 
-    Otomatis reuse sertifikat domain utama jika tersedia.
+    By default, attempts to reuse/expand parent domain certificate.
 
-    Contoh:
+    Examples:
         proxy add-subdomain api.example.com --target api-service:8080
         proxy add-subdomain blog.example.com --target ghost:2368 --separate-cert
     """
     if not is_subdomain(subdomain):
         console.print(
-            f"[red]✗ '{subdomain}' bukan subdomain. "
-            f"Gunakan 'proxy add-domain' untuk domain utama.[/red]"
+            f"[red]✗ '{subdomain}' does not appear to be a subdomain![/red]\n"
+            f"[dim]Use 'proxy add-domain' for main domains.[/dim]"
         )
         sys.exit(1)
 
-    parent = get_parent_domain(subdomain)
+    parent_domain = get_parent_domain(subdomain)
+    reuse_cert = not separate_cert
+
     console.print(Panel(
         f"[bold]Adding subdomain:[/bold] {subdomain}\n"
-        f"[bold]Parent domain:[/bold] {parent}\n"
         f"[bold]Target:[/bold] {target}\n"
-        f"[bold]Certificate:[/bold] {'Reuse parent' if reuse_cert else 'Separate'}",
+        f"[bold]Parent domain:[/bold] {parent_domain or 'N/A'}\n"
+        f"[bold]SSL Cert Mode:[/bold] {'Reuse Parent Cert' if reuse_cert else 'Separate Cert'}",
         title="🌐 Add Subdomain",
         border_style="blue",
     ))
 
-    # Cek config existing
+    # Check if config exists
     if config_exists(subdomain) and not force:
         console.print(
-            f"\n[red]✗ Config untuk '{subdomain}' sudah ada![/red]\n"
-            f"[dim]Gunakan --force untuk overwrite.[/dim]"
+            f"\n[red]✗ Configuration for '{subdomain}' already exists![/red]\n"
+            f"[dim]Use --force to overwrite.[/dim]"
         )
         sys.exit(1)
 
@@ -274,17 +278,22 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
         try:
             match, vps_ip, resolved_ips = check_domain_points_to_vps(subdomain)
             print_dns_check_result(subdomain, match, vps_ip, resolved_ips)
+
             if not match:
-                console.print("\n[red]Abort: DNS belum mengarah ke VPS ini.[/red]")
+                console.print(
+                    f"\n[red]✗ Subdomain '{subdomain}' does not point to this VPS.[/red]\n"
+                    "[dim]Add the DNS A record first, or use --skip-dns-check.[/dim]"
+                )
                 sys.exit(1)
+
         except DNSError as e:
             console.print(f"\n[red]✗ DNS Error: {e}[/red]")
             sys.exit(1)
     else:
         console.print("\n[bold]Step 1/5:[/bold] DNS check [yellow]SKIPPED[/yellow]")
 
-    # Step 2: Ensure nginx running
-    console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running...")
+    # Step 2: Ensure nginx running & check target network
+    console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running & checking target network...")
     try:
         ensure_nginx_running()
         check_target_network_status(target)
@@ -299,9 +308,10 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
     try:
         http_config = render_http_challenge_config(subdomain, www=False)
         write_config(subdomain, http_config)
+
         success, msg = reload_nginx()
         if not success:
-            console.print(f"[red]✗ Nginx reload gagal: {msg}[/red]")
+            console.print(f"[red]✗ Nginx reload failed: {msg}[/red]")
             if backup_path:
                 restore_config(subdomain, backup_path)
             else:
@@ -329,38 +339,44 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
         reload_nginx()
         sys.exit(1)
 
-    # Step 5: Final SSL config
+    # Step 5: Write final SSL config
     console.print("\n[bold]Step 5/5:[/bold] Applying final SSL config...")
     try:
-        ssl_config = render_ssl_config(subdomain, target, www=False, cert_domain=cert_domain)
+        ssl_config = render_ssl_config(
+            subdomain, target, www=False, cert_domain=cert_domain
+        )
         write_config(subdomain, ssl_config)
 
-        success, msg = test_nginx_config()
-        if not success:
-            console.print(f"[red]✗ Nginx config test gagal: {msg}[/red]")
-            http_config = render_http_challenge_config(subdomain, www=False)
-            write_config(subdomain, http_config)
+        test_ok, test_msg = test_nginx_config()
+        if not test_ok:
+            console.print(f"[red]✗ Nginx config test failed: {test_msg}[/red]")
+            console.print("[yellow]Rolling back...[/yellow]")
+            if backup_path:
+                restore_config(subdomain, backup_path)
+            else:
+                write_config(subdomain, http_config)
             reload_nginx()
             sys.exit(1)
 
-        success, msg = reload_nginx()
-        if not success:
-            console.print(f"[red]✗ Nginx reload gagal: {msg}[/red]")
+        reload_ok, reload_msg = reload_nginx()
+        if not reload_ok:
+            console.print(f"[red]✗ Nginx reload failed: {reload_msg}[/red]")
+            if backup_path:
+                restore_config(subdomain, backup_path)
             sys.exit(1)
 
         cleanup_old_backups(subdomain)
 
     except Exception as e:
-        console.print(f"[red]✗ Error: {e}[/red]")
-        http_config = render_http_challenge_config(subdomain, www=False)
-        write_config(subdomain, http_config)
-        reload_nginx()
+        console.print(f"[red]✗ Error applying SSL config: {e}[/red]")
+        if backup_path:
+            restore_config(subdomain, backup_path)
         sys.exit(1)
 
     console.print(Panel(
-        f"[bold green]✓ Subdomain '{subdomain}' berhasil dikonfigurasi![/bold green]\n\n"
+        f"[green]✓ Subdomain '{subdomain}' successfully configured![/green]\n\n"
         f"  🌐 https://{subdomain}\n"
-        f"  🔒 Certificate: {cert_domain}\n"
+        f"  🔒 SSL Certificate: {cert_domain}\n"
         f"  🔄 Proxy target: {target}",
         title="✅ Success",
         border_style="green",
@@ -372,12 +388,16 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
 
 @cli.command("list")
 def list_domains():
-    """Tampilkan semua domain aktif beserta status sertifikat."""
+    """List all active domains with target and SSL certificate status.
+
+    Example:
+        proxy list
+    """
     configs = list_active_configs()
 
     if not configs:
-        console.print("\n[dim]Belum ada domain yang dikonfigurasi.[/dim]")
-        console.print("[dim]Gunakan 'proxy add-domain' untuk menambahkan.[/dim]")
+        console.print("\n[yellow]No domains configured yet.[/yellow]")
+        console.print("[dim]Use 'proxy add-domain' to add one.[/dim]\n")
         return
 
     table = Table(title="🌐 Active Domains")
@@ -416,28 +436,28 @@ def list_domains():
 @cli.command("remove")
 @click.argument("domain")
 @click.option("--remove-cert", is_flag=True, default=False,
-              help="Hapus juga sertifikat SSL")
-@click.confirmation_option(prompt="Yakin ingin menghapus domain ini?")
+              help="Also delete SSL certificate files")
+@click.confirmation_option(prompt="Are you sure you want to remove this domain?")
 def remove_domain(domain: str, remove_cert: bool):
-    """Hapus konfigurasi domain.
+    """Remove domain configuration.
 
-    Contoh:
+    Examples:
         proxy remove example.com
         proxy remove example.com --remove-cert
     """
     console.print(f"\n[bold]Removing domain:[/bold] {domain}")
 
     if not config_exists(domain):
-        console.print(f"[red]✗ Config untuk '{domain}' tidak ditemukan.[/red]")
+        console.print(f"[red]✗ Configuration for '{domain}' not found.[/red]")
         sys.exit(1)
 
-    # Backup sebelum hapus
+    # Backup before remove
     backup_config(domain)
 
-    # Hapus config
+    # Remove config
     remove_config(domain)
 
-    # Hapus sertifikat jika diminta
+    # Remove certificate if requested
     if remove_cert:
         console.print("\n[yellow]Removing SSL certificate...[/yellow]")
         remove_certificate(domain)
@@ -448,10 +468,10 @@ def remove_domain(domain: str, remove_cert: bool):
     if success:
         console.print(f"[green]✓[/green] Nginx reloaded")
     else:
-        console.print(f"[yellow]⚠ Nginx reload: {msg}[/yellow]")
+        console.print(f"[yellow]⚠️ Nginx reload: {msg}[/yellow]")
 
     console.print(Panel(
-        f"[green]✓ Domain '{domain}' berhasil dihapus.[/green]",
+        f"[green]✓ Domain '{domain}' successfully removed.[/green]",
         title="✅ Removed",
         border_style="green",
     ))
@@ -462,104 +482,99 @@ def remove_domain(domain: str, remove_cert: bool):
 
 @cli.command("test")
 def test_config():
-    """Test konfigurasi nginx (nginx -t)."""
-    console.print("\n[bold]Testing nginx configuration...[/bold]\n")
+    """Test Nginx configuration syntax (nginx -t).
 
-    try:
-        success, output = test_nginx_config()
-    except DockerError as e:
-        console.print(f"[red]✗ Docker Error: {e}[/red]")
-        console.print("[dim]Pastikan nginx container sedang berjalan.[/dim]")
-        sys.exit(1)
+    Example:
+        proxy test
+    """
+    console.print("\n[bold]Testing Nginx configuration...[/bold]")
+    success, msg = test_nginx_config()
 
     if success:
-        console.print(f"[green]✓ Configuration test passed[/green]")
-        if output:
-            console.print(f"[dim]{output}[/dim]")
+        console.print(Panel(
+            f"[green]✓ Nginx configuration syntax is OK![/green]\n\n[dim]{msg}[/dim]",
+            title="✅ Syntax OK",
+            border_style="green",
+        ))
     else:
-        console.print(f"[red]✗ Configuration test FAILED[/red]")
-        console.print(f"\n{output}")
+        console.print(Panel(
+            f"[red]✗ Nginx configuration test failed![/red]\n\n{msg}",
+            title="❌ Test Failed",
+            border_style="red",
+        ))
         sys.exit(1)
 
 
-# ── Command: reload ─────────────────────────────────────────────────
+# ── Command: reload ──────────────────────────────────────────────────
 
 
 @cli.command("reload")
-def reload_cmd():
-    """Reload nginx setelah perubahan konfigurasi."""
-    console.print("\n[bold]Reloading nginx...[/bold]\n")
+def reload_config():
+    """Reload Nginx service (nginx -s reload).
 
-    # Test dulu sebelum reload
-    success, msg = test_nginx_config()
-    if not success:
-        console.print(f"[red]✗ Config test failed — reload dibatalkan[/red]")
-        console.print(f"\n{msg}")
+    Example:
+        proxy reload
+    """
+    console.print("\n[bold]Testing configuration before reload...[/bold]")
+    test_ok, test_msg = test_nginx_config()
+    if not test_ok:
+        console.print(f"[red]✗ Cannot reload: Nginx config test failed![/red]\n{test_msg}")
         sys.exit(1)
 
-    success, msg = reload_nginx()
-    if success:
-        console.print(f"[green]✓ {msg}[/green]")
+    console.print("[yellow]Reloading Nginx...[/yellow]")
+    reload_ok, reload_msg = reload_nginx()
+
+    if reload_ok:
+        console.print(f"[green]✓[/green] {reload_msg}")
     else:
-        console.print(f"[red]✗ Reload failed: {msg}[/red]")
+        console.print(f"[red]✗ Reload failed: {reload_msg}[/red]")
         sys.exit(1)
 
 
-# ── Command: renew ──────────────────────────────────────────────────
+# ── Command: renew ───────────────────────────────────────────────────
 
 
 @cli.command("renew")
 @click.option("--setup-cron", is_flag=True, default=False,
-              help="Tampilkan instruksi setup crontab")
+              help="Show crontab setup instructions for auto-renewal")
 def renew_cmd(setup_cron: bool):
-    """Renew semua sertifikat SSL dan reload nginx.
+    """Renew all SSL certificates and reload Nginx.
 
-    Contoh:
+    Examples:
         proxy renew
         proxy renew --setup-cron
     """
     if setup_cron:
-        _print_cron_instructions()
+        console.print(Panel(
+            "[bold]⏰ Crontab Setup Instructions[/bold]\n\n"
+            "To auto-renew certificates daily at 3:00 AM, add this entry to crontab:\n\n"
+            "  [cyan]crontab -e[/cyan]\n\n"
+            "Add line:\n"
+            "  [green]0 3 * * * proxy renew >> /var/log/certbot-renew.log 2>&1[/green]\n\n"
+            "Or using script:\n"
+            "  [green]0 3 * * * /path/to/nginx-proxy-helper/scripts/renew-certs.sh >> /var/log/certbot-renew.log 2>&1[/green]",
+            title="⏰ Auto-Renewal Setup",
+            border_style="blue",
+        ))
         return
 
-    console.print("\n[bold]Renewing SSL certificates...[/bold]\n")
+    console.print("\n[bold]Starting SSL certificate renewal...[/bold]")
 
+    ensure_nginx_running()
     success, output = renew_certificates()
+
     if output:
-        console.print(f"[dim]{output}[/dim]")
+        console.print(f"\n[dim]{output}[/dim]")
 
     if success:
-        console.print("\n[yellow]Reloading nginx...[/yellow]")
-        r_success, r_msg = reload_nginx()
-        if r_success:
-            console.print(f"[green]✓ Nginx reloaded after renewal[/green]")
+        console.print("\n[yellow]Reloading Nginx...[/yellow]")
+        reload_ok, reload_msg = reload_nginx()
+        if reload_ok:
+            console.print("[bold green]✅ Renewal completed & Nginx reloaded![/bold green]")
         else:
-            console.print(f"[yellow]⚠ Nginx reload issue: {r_msg}[/yellow]")
+            console.print(f"[yellow]⚠️ Certificates renewed, but Nginx reload failed: {reload_msg}[/yellow]")
     else:
-        console.print("\n[red]✗ Certificate renewal encountered issues.[/red]")
-        console.print("[dim]Cek output di atas untuk detail.[/dim]")
-        sys.exit(1)
-
-
-def _print_cron_instructions():
-    """Tampilkan instruksi setup crontab untuk auto-renew."""
-    console.print(Panel(
-        "[bold]Auto-Renewal Crontab Setup[/bold]\n\n"
-        "1. Pastikan script renew-certs.sh sudah executable:\n"
-        "   [cyan]chmod +x scripts/renew-certs.sh[/cyan]\n\n"
-        "2. Edit crontab:\n"
-        "   [cyan]crontab -e[/cyan]\n\n"
-        "3. Tambahkan baris berikut (renew setiap hari jam 3 pagi):\n"
-        "   [cyan]0 3 * * * /path/to/nginx-proxy-helper/scripts/renew-certs.sh "
-        ">> /var/log/certbot-renew.log 2>&1[/cyan]\n\n"
-        "   Atau gunakan proxy command langsung:\n"
-        "   [cyan]0 3 * * * cd /path/to/nginx-proxy-helper && "
-        "proxy renew >> /var/log/certbot-renew.log 2>&1[/cyan]\n\n"
-        "4. Verifikasi crontab:\n"
-        "   [cyan]crontab -l[/cyan]",
-        title="⏰ Crontab Setup",
-        border_style="yellow",
-    ))
+        console.print("[red]✗ Renewal completed with errors.[/red]")
 
 
 # ── Command: dns-check ──────────────────────────────────────────────
@@ -567,30 +582,41 @@ def _print_cron_instructions():
 
 @cli.command("dns-check")
 @click.argument("domain")
-def dns_check(domain: str):
-    """Cek apakah A record domain mengarah ke VPS yang benar.
+def dns_check_cmd(domain: str):
+    """Check if domain A records point to this VPS IP.
 
-    Contoh:
+    Example:
         proxy dns-check example.com
-        proxy dns-check api.example.com
     """
-    console.print(f"\n[bold]Checking DNS for:[/bold] {domain}\n")
+    console.print(f"\n[bold]Checking DNS for:[/bold] {domain}")
 
     try:
         match, vps_ip, resolved_ips = check_domain_points_to_vps(domain)
         print_dns_check_result(domain, match, vps_ip, resolved_ips)
-    except DNSError as e:
-        console.print(f"[red]✗ {e}[/red]")
 
-        # Coba dapatkan VPS IP untuk instruksi
+        if is_subdomain(domain):
+            parent = get_parent_domain(domain)
+            if parent:
+                console.print(f"\nChecking parent domain: {parent}...")
+                try:
+                    p_match, _, p_ips = check_domain_points_to_vps(parent)
+                    print_dns_check_result(parent, p_match, vps_ip, p_ips)
+                except DNSError:
+                    pass
+
+        if not match:
+            sys.exit(1)
+
+    except DNSError as e:
+        console.print(f"\n[red]✗ DNS Check Error: {e}[/red]")
+
         try:
             from nginx_proxy_helper.lib.dns import get_public_ip, print_dns_instructions
             vps_ip = get_public_ip()
             print_dns_instructions(domain, vps_ip)
         except DNSError:
             console.print(
-                "\n[dim]Pastikan domain sudah didaftarkan dan "
-                "DNS record sudah dikonfigurasi.[/dim]"
+                "\n[dim]Ensure domain is registered and DNS A records are configured.[/dim]"
             )
 
         sys.exit(1)
@@ -601,12 +627,9 @@ def dns_check(domain: str):
 
 @cli.command("check")
 def check_deps():
-    """Cek apakah semua dependency yang dibutuhkan sudah terinstall.
+    """Check system dependencies, Docker status, network, and Python packages.
 
-    Mengecek: Docker, Docker Compose, Python, OpenSSL,
-    Docker network, container status, dan Python packages.
-
-    Contoh:
+    Example:
         proxy check
     """
     from nginx_proxy_helper.lib.checker import run_full_check
@@ -624,11 +647,9 @@ def check_deps():
 
 @cli.command("install")
 def install_cmd():
-    """Install Docker & Docker Compose (jika belum ada), buat docker network, dan jalankan container.
+    """Auto-install Docker/Compose, setup network, and launch containers.
 
-    Menyiapkan seluruh environment VPS secara otomatis.
-
-    Contoh:
+    Examples:
         proxy install
     """
     from nginx_proxy_helper.lib.installer import setup_vps_environment
