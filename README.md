@@ -33,30 +33,45 @@ Otomatis generate konfigurasi Nginx, request sertifikat SSL via Let's Encrypt, d
 
 ## 🚀 Installation
 
-### 1. Clone & Install
+### Quick Install (Recommended)
+
+**macOS / Linux** — open terminal and run:
 
 ```bash
-git clone <repo-url> nginx-proxy-helper
-cd nginx-proxy-helper
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/install.sh)"
+```
 
-# Install package (development mode)
+This will:
+- Clone the repo to `~/.nginx-proxy-helper`
+- Create a Python virtual environment
+- Install all dependencies
+- Add `proxy` command to your PATH
+
+### Manual Install
+
+```bash
+git clone https://github.com/mhiqrambg/nginx-proxy-helper.git
+cd nginx-proxy-helper
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
-### 2. Setup Docker Network
+### Post-Install Setup
 
 ```bash
+# Create Docker network (required, run once)
 docker network create nginx-network
-```
 
-### 3. Start Services
-
-```bash
-cd nginx-alpine
+# Start Nginx & Certbot services
+cd ~/.nginx-proxy-helper/nginx-alpine  # or your clone path
 docker compose up -d
+
+# Verify everything is ready
+proxy check
 ```
 
-### 4. (Opsional) Set Environment Variables
+### Environment Variables (Optional)
 
 ```bash
 # Email untuk Let's Encrypt notifications
@@ -67,6 +82,18 @@ export CERTBOT_STAGING=1
 
 # Custom project root (jika tidak di default location)
 export NGINX_PROXY_ROOT=/path/to/nginx-proxy-helper
+```
+
+### Update
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/update.sh)"
+```
+
+### Uninstall
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/uninstall.sh)"
 ```
 
 ---
