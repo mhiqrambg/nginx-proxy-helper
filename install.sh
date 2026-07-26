@@ -94,7 +94,8 @@ cd "$INSTALL_DIR"
 echo ""
 echo -e "${BOLD}[3/5]${NC} Setting up Python virtual environment..."
 
-if [ ! -d ".venv" ]; then
+if [ ! -f ".venv/bin/activate" ]; then
+    rm -rf .venv
     $PYTHON_CMD -m venv .venv
     echo -e "  ${GREEN}✓${NC} Virtual environment created"
 else
