@@ -159,6 +159,17 @@ def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
     return run_command(cmd, cwd=str(COMPOSE_DIR), check=False)
 
 
+def get_containers_in_network(network_name: str = DOCKER_NETWORK) -> set[str]:
+    """Dapatkan set nama container yang terhubung ke docker network."""
+    res = run_command(
+        ["docker", "network", "inspect", network_name, "--format", "{{range .Containers}}{{.Name}} {{end}}"],
+        check=False,
+    )
+    if res.returncode == 0 and res.stdout:
+        return set(res.stdout.strip().split())
+    return set()
+
+
 def check_target_network_status(target: str) -> None:
     """Cek apakah target container terhubung ke network 'nginx-network'.
 
@@ -180,37 +191,39 @@ def check_target_network_status(target: str) -> None:
     # Case 1: Target adalah container name (misal: "9router")
     if host not in ("host.docker.internal", "localhost", "127.0.0.1", "0.0.0.0"):
         res = run_command(["docker", "inspect", "-f", "{{.State.Running}}", host], check=False)
-        if res.returncode == 0:
-            # Container ditemukan! Cek koneksi ke nginx-network
-            net_check = run_command(
-                ["docker", "inspect", "-f", f"{{{{index .NetworkSettings.Networks \"{DOCKER_NETWORK}\"}}}}", host],
-                check=False,
-            )
-            is_connected = net_check.returncode == 0 and "<no value>" not in net_check.stdout
+        if res.returncode == 0 and res.stdout.strip() == "true":
+            # Container ditemukan & running! Cek koneksi ke nginx-network via docker network inspect
+            net_containers = get_containers_in_network(DOCKER_NETWORK)
+            is_connected = host in net_containers
 
             if not is_connected:
                 console.print(
-                    f"[yellow]⚠ Container '{host}' belum terhubung ke network '{DOCKER_NETWORK}'.[/yellow]\n"
-                    f"[cyan]⚡ Menghubungkan '{host}' ke '{DOCKER_NETWORK}' secara otomatis...[/cyan]"
+                    f"\n[bold yellow]⚠ Warning: Target container '{host}' belum berada di network '{DOCKER_NETWORK}'.[/bold yellow]\n"
+                    f"[cyan]⚡ Mencoba menghubungkan '{host}' ke '{DOCKER_NETWORK}' secara otomatis...[/cyan]"
                 )
                 conn_res = run_command(["docker", "network", "connect", DOCKER_NETWORK, host], check=False)
-                if conn_res.returncode == 0:
+
+                # Re-check setelah connect
+                if conn_res.returncode == 0 and host in get_containers_in_network(DOCKER_NETWORK):
                     console.print(f"[green]✓[/green] Container '{host}' berhasil dihubungkan ke '{DOCKER_NETWORK}'!")
                 else:
                     raise DockerError(
-                        f"Target container '{host}' ada tetapi gagal dihubungkan ke network '{DOCKER_NETWORK}'.\n"
-                        f"Solusi manual: docker network connect {DOCKER_NETWORK} {host}"
+                        f"Target container '{host}' belum terhubung ke network '{DOCKER_NETWORK}'.\n\n"
+                        f"💡 Solution:\n"
+                        f"  Jalankan perintah ini di terminal VPS Anda:\n"
+                        f"    docker network connect {DOCKER_NETWORK} {host}\n\n"
+                        f"  Lalu jalankan ulang perintah proxy add-domain."
                     )
             else:
-                console.print(f"[green]✓[/green] Target container '{host}' sudah terhubung ke '{DOCKER_NETWORK}'")
+                console.print(f"[green]✓[/green] Target container '{host}' terverifikasi berada di network '{DOCKER_NETWORK}'")
             return
         else:
-            # Container tidak ditemukan
+            # Container tidak ditemukan atau tidak running
             raise DockerError(
                 f"Target container '{host}' tidak ditemukan atau tidak sedang berjalan.\n\n"
                 f"💡 Solution & Troubleshooting:\n"
-                f"  1. Pastikan nama container benar (cek via 'docker ps').\n"
-                f"  2. Jika container ada, hubungkan ke network:\n"
+                f"  1. Cek nama container yang berjalan dengan: docker ps\n"
+                f"  2. Jika container berjalan, hubungkan ke network:\n"
                 f"     docker network connect {DOCKER_NETWORK} {host}\n"
                 f"  3. Atau jika service berjalan langsung di VPS host, gunakan:\n"
                 f"     --target host.docker.internal:{port}"
