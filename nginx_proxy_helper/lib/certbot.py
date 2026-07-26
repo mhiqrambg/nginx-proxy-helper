@@ -144,7 +144,9 @@ def request_certificate(
     result = run_certbot_docker(args)
 
     if result.returncode != 0:
-        output = (result.stderr or result.stdout or "").strip()
+        stdout_str = (result.stdout or "").strip()
+        stderr_str = (result.stderr or "").strip()
+        output = f"{stdout_str}\n{stderr_str}".strip()
         raise CertbotError(
             f"Certbot failed to obtain SSL certificate:\n{output}"
         )
@@ -214,7 +216,9 @@ def request_subdomain_certificate(
         result = run_certbot_docker(args)
 
         if result.returncode != 0:
-            output = (result.stderr or result.stdout or "").strip()
+            stdout_str = (result.stdout or "").strip()
+            stderr_str = (result.stderr or "").strip()
+            output = f"{stdout_str}\n{stderr_str}".strip()
             raise CertbotError(
                 f"Certbot failed to expand certificate:\n{output}\n\n"
                 f"Try running with --separate-cert to request an isolated certificate."

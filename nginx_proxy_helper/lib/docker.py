@@ -142,7 +142,7 @@ def ensure_nginx_running() -> None:
 
 
 def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
-    """Run certbot via docker run (one-shot container).
+    """Run certbot via docker exec inside running certbot container.
 
     Args:
         args: Arguments for certbot command.
@@ -150,12 +150,15 @@ def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
     Returns:
         CompletedProcess result.
     """
+    if is_container_running("certbot"):
+        cmd = ["docker", "exec", "certbot", "certbot"] + args
+        return run_command(cmd, check=False)
+
     cmd = [
         "docker", "compose", "run", "--rm",
         "--entrypoint", "certbot",
         "certbot",
     ] + args
-
     return run_command(cmd, cwd=str(COMPOSE_DIR), check=False)
 
 
