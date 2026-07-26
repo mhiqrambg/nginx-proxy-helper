@@ -50,6 +50,9 @@ server {
     # --- HSTS ---
     add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
 
+    # --- DNS Resolver (Docker Internal DNS) ---
+    resolver 127.0.0.11 ipv6=off valid=30s;
+
     # --- Reverse Proxy ---
     location / {
         proxy_pass http://{{ target }};
