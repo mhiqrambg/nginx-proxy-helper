@@ -18,7 +18,11 @@ from nginx_proxy_helper.lib.dns import (
     is_subdomain,
     print_dns_check_result,
 )
-from nginx_proxy_helper.lib.docker import DockerError, ensure_nginx_running
+from nginx_proxy_helper.lib.docker import (
+    DockerError,
+    check_target_network_status,
+    ensure_nginx_running,
+)
 from nginx_proxy_helper.lib.nginx import (
     backup_config,
     cleanup_old_backups,
@@ -131,6 +135,7 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
     console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running...")
     try:
         ensure_nginx_running()
+        check_target_network_status(target)
     except DockerError as e:
         console.print(f"\n[red]✗ Docker Error: {e}[/red]")
         sys.exit(1)
@@ -282,6 +287,7 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
     console.print("\n[bold]Step 2/5:[/bold] Ensuring nginx is running...")
     try:
         ensure_nginx_running()
+        check_target_network_status(target)
     except DockerError as e:
         console.print(f"\n[red]✗ Docker Error: {e}[/red]")
         sys.exit(1)
