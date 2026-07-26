@@ -58,6 +58,9 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 # Backup directory untuk rollback
 BACKUP_DIR = COMPOSE_DIR / ".backups"
 
+# Nginx SSL fallback directory for catch-all default server
+NGINX_SSL_DIR = COMPOSE_DIR / "nginx" / "ssl"
+
 # === Docker Settings ===
 
 NGINX_CONTAINER_NAME = "nginx"
@@ -73,7 +76,22 @@ DEFAULT_EMAIL = os.environ.get("CERTBOT_EMAIL", "")
 CERTBOT_STAGING = os.environ.get("CERTBOT_STAGING", "0") == "1"
 
 
+def ensure_dummy_ssl_cert():
+    """Generate self-signed SSL cert fallback untuk catch-all default server."""
+    cert_file = NGINX_SSL_DIR / "dummy.crt"
+    key_file = NGINX_SSL_DIR / "dummy.key"
+    if not cert_file.exists() or not key_file.exists():
+        import subprocess
+        cmd = [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+            "-keyout", str(key_file), "-out", str(cert_file),
+            "-days", "3650", "-subj", "/CN=default"
+        ]
+        subprocess.run(cmd, capture_output=True)
+
+
 def ensure_directories():
     """Pastikan semua directory yang dibutuhkan sudah ada."""
-    for d in [NGINX_CONF_DIR, CERTBOT_CONF_DIR, CERTBOT_WWW_DIR, BACKUP_DIR]:
+    for d in [NGINX_CONF_DIR, CERTBOT_CONF_DIR, CERTBOT_WWW_DIR, BACKUP_DIR, NGINX_SSL_DIR]:
         d.mkdir(parents=True, exist_ok=True)
+    ensure_dummy_ssl_cert()

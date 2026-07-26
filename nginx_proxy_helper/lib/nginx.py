@@ -222,6 +222,9 @@ def list_active_configs() -> list[dict]:
         return configs
 
     for conf_file in sorted(NGINX_CONF_DIR.glob("*.conf")):
+        if conf_file.name.startswith(("00-", "_", "default")):
+            continue
+
         content = conf_file.read_text()
 
         # Extract server_name
@@ -232,8 +235,10 @@ def list_active_configs() -> list[dict]:
         proxy_targets = re.findall(r"proxy_pass\s+http://([^;]+);", content)
         target = proxy_targets[0].strip() if proxy_targets else "-"
 
-        # Cek apakah config punya SSL
+        # Cek apakah config punya SSL & domain sertifikatnya
         has_ssl = "ssl_certificate" in content
+        cert_domain_matches = re.findall(r"ssl_certificate\s+/etc/letsencrypt/live/([^/]+)/fullchain\.pem;", content)
+        cert_domain = cert_domain_matches[0] if cert_domain_matches else domain
 
         # Collect server_name values
         all_names = set()
@@ -248,6 +253,7 @@ def list_active_configs() -> list[dict]:
             "target": target,
             "config_file": conf_file.name,
             "has_ssl": has_ssl,
+            "cert_domain": cert_domain,
         })
 
     return configs
