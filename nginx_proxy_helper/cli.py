@@ -164,7 +164,7 @@ def add_domain(domain: str, target: str, www: bool, email: str, skip_dns_check: 
     console.print("\n[bold]Step 4/5:[/bold] Requesting SSL certificate via certbot...")
     try:
         request_certificate(domain, www=www, email=email)
-    except CertbotError as e:
+    except (CertbotError, DockerError) as e:
         console.print(f"\n[red]✗ Certbot Error:[/red]\n{e}")
         console.print("\n[yellow]Rolling back: removing HTTP-only config...[/yellow]")
         if backup_path:
@@ -313,7 +313,7 @@ def add_subdomain(subdomain: str, target: str, email: str, reuse_cert: bool,
         cert_domain = request_subdomain_certificate(
             subdomain, reuse_parent=reuse_cert, email=email
         )
-    except CertbotError as e:
+    except (CertbotError, DockerError) as e:
         console.print(f"\n[red]✗ Certbot Error:[/red]\n{e}")
         console.print("\n[yellow]Rolling back...[/yellow]")
         if backup_path:

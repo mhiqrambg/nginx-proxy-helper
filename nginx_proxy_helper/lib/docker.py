@@ -152,6 +152,7 @@ def run_certbot_docker(args: list[str]) -> subprocess.CompletedProcess:
     """
     cmd = [
         "docker", "compose", "run", "--rm",
+        "--entrypoint", "certbot",
         "certbot",
     ] + args
 
