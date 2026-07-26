@@ -60,6 +60,18 @@ PY_VERSION=$($PYTHON_CMD --version 2>&1)
 echo -e "  ${GREEN}✓${NC} $PY_VERSION"
 echo -e "  ${GREEN}✓${NC} git $(git --version | cut -d' ' -f3)"
 
+# Check if venv works, auto-install on Debian/Ubuntu if missing
+if ! $PYTHON_CMD -m venv --help &> /dev/null; then
+    if command -v apt-get &> /dev/null; then
+        echo -e "  ${YELLOW}Installing python3-venv & python3-pip via apt...${NC}"
+        SUDO_CMD=""
+        if [ "$EUID" -ne 0 ] && command -v sudo &> /dev/null; then
+            SUDO_CMD="sudo"
+        fi
+        $SUDO_CMD apt-get update -qq && $SUDO_CMD apt-get install -y -qq python3-venv python3-pip &> /dev/null || true
+    fi
+fi
+
 # ── Clone or update repository ─────────────────────────────────
 
 echo ""
