@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nginx-proxy-helper"
+version = "1.0.0"
+description = "CLI tool untuk mengelola reverse proxy Nginx + SSL Certbot di VPS via Docker Compose"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "nginx-proxy-helper"}
+]
+
+dependencies = [
+    "click>=8.0",
+    "Jinja2>=3.0",
+    "dnspython>=2.3",
+    "tabulate>=0.9",
+    "rich>=13.0",
+]
+
+[project.scripts]
+proxy = "nginx_proxy_helper.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["nginx_proxy_helper*"]
+
+[tool.setuptools.package-data]
+nginx_proxy_helper = ["templates/*.j2"]
