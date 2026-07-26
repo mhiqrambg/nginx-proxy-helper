@@ -643,21 +643,49 @@ def check_deps():
         sys.exit(1)
 
 
-# ── Command: install ────────────────────────────────────────────────
+# ── Command: auto-install ───────────────────────────────────────────
 
 
-@cli.command("install")
-def install_cmd():
+@cli.command("auto-install")
+def auto_install_cmd():
     """Auto-install Docker/Compose, setup network, and launch containers.
 
     Examples:
-        proxy install
+        proxy auto-install
     """
     from nginx_proxy_helper.lib.installer import setup_vps_environment
 
     success = setup_vps_environment()
     if not success:
         sys.exit(1)
+
+
+@cli.command("install", hidden=True)
+def install_alias():
+    """Alias for auto-install."""
+    auto_install_cmd()
+
+
+# ── Command: uninstall ──────────────────────────────────────────────
+
+
+@cli.command("uninstall")
+def uninstall_cmd():
+    """Uninstall nginx-proxy-helper (interactive prompt).
+
+    Examples:
+        proxy uninstall
+    """
+    import os
+    import subprocess
+    from nginx_proxy_helper.config import PROJECT_ROOT
+
+    script_path = PROJECT_ROOT / "uninstall.sh"
+    if script_path.exists():
+        subprocess.run(["/bin/bash", str(script_path)])
+    else:
+        cmd = "/bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/mhiqrambg/nginx-proxy-helper/main/uninstall.sh)\""
+        subprocess.run(cmd, shell=True)
 
 
 # ── Command: export ─────────────────────────────────────────────────

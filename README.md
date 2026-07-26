@@ -19,8 +19,9 @@ Automatically generates Nginx configurations, requests SSL certificates via Let'
 | `proxy renew` | Renew all SSL certificates and reload Nginx |
 | `proxy dns-check` | Check if domain A records point to your VPS IP |
 | `proxy check` | Validate system dependencies (Docker, Python, network, containers) |
-| `proxy install` | Auto-install Docker/Compose, setup network, and launch containers |
+| `proxy auto-install` | Auto-install Docker/Compose, setup network, and launch containers |
 | `proxy export` | Export standalone Nginx setup & certs to any folder (e.g. `/root/nginx-alpine`) |
+| `proxy uninstall` | Interactive uninstaller (export to standalone or complete removal) |
 
 ---
 
