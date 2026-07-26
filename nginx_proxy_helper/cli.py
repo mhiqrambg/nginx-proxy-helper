@@ -393,7 +393,7 @@ def list_domains():
         names = ", ".join(cfg["server_names"])
         target = cfg["target"]
         ssl_icon = "🔒" if cfg["has_ssl"] else "🔓"
-        cert_domain = cfg.get("cert_domain", domain)
+        cert_domain = str(cfg.get("cert_domain") or domain)
         cert_status = get_cert_status(cert_domain)
 
         table.add_row(

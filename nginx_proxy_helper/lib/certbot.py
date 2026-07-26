@@ -66,9 +66,9 @@ def get_cert_expiry(domain: str) -> Optional[datetime]:
             check=False,
         )
         if result.returncode == 0 and result.stdout:
-            # Output: notAfter=Jul 26 12:00:00 2026 GMT
             date_str = result.stdout.strip().split("=", 1)[1]
-            return datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
+            parsed_dt = datetime.strptime(date_str, "%b %d %H:%M:%S %Y %Z")
+            return parsed_dt.replace(tzinfo=timezone.utc)
     except Exception:
         pass
 
