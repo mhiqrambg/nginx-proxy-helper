@@ -45,6 +45,7 @@ from nginx_proxy_helper.lib.certbot import (
     renew_certificates,
     request_certificate,
     request_subdomain_certificate,
+    sync_domain_certificates,
 )
 
 console = Console()
@@ -538,11 +539,16 @@ def reload_config():
 @cli.command("renew")
 @click.option("--setup-cron", is_flag=True, default=False,
               help="Show crontab setup instructions for auto-renewal")
-def renew_cmd(setup_cron: bool):
+@click.option("--sync", default=None,
+              help="Consolidate all subdomains under domain into a unified SSL certificate (e.g. --sync shre.site)")
+def renew_cmd(setup_cron: bool, sync: Optional[str]):
     """Renew all SSL certificates and reload Nginx.
+
+    Optionally consolidate subdomains into a unified master certificate using --sync <domain>.
 
     Examples:
         proxy renew
+        proxy renew --sync shre.site
         proxy renew --setup-cron
     """
     if setup_cron:
@@ -559,9 +565,31 @@ def renew_cmd(setup_cron: bool):
         ))
         return
 
+    ensure_nginx_running()
+
+    if sync:
+        console.print(f"\n[bold]Consolidating & Syncing SSL Certificates for:[/bold] [cyan]{sync}[/cyan]")
+        try:
+            success = sync_domain_certificates(sync)
+            if success:
+                console.print("\n[yellow]Reloading Nginx...[/yellow]")
+                reload_ok, reload_msg = reload_nginx()
+                if reload_ok:
+                    console.print(Panel(
+                        f"[green]✓ All subdomains under '{sync}' have been consolidated into a unified SSL certificate![/green]\n"
+                        f"[green]Nginx reloaded successfully.[/green]",
+                        title="✅ Sync Complete",
+                        border_style="green",
+                    ))
+                else:
+                    console.print(f"[yellow]⚠️ Certificates synced, but Nginx reload failed: {reload_msg}[/yellow]")
+        except (CertbotError, DockerError, Exception) as e:
+            console.print(f"[red]✗ Sync failed: {e}[/red]")
+            sys.exit(1)
+        return
+
     console.print("\n[bold]Starting SSL certificate renewal...[/bold]")
 
-    ensure_nginx_running()
     success, output = renew_certificates()
 
     if output:

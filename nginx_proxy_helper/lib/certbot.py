@@ -323,3 +323,102 @@ def remove_certificate(domain: str) -> bool:
         output = (result.stderr or result.stdout or "").strip()
         console.print(f"[red]✗[/red] Failed to remove certificate: {output}")
         return False
+
+
+# ── Certificate Synchronization & Consolidation ────────────────────
+
+
+def sync_domain_certificates(main_domain: str, email: Optional[str] = None) -> bool:
+    """Consolidate/sync all active subdomains under main_domain into a unified SSL certificate.
+
+    Args:
+        main_domain: Main domain name e.g. "shre.site".
+        email: Optional email for Let's Encrypt.
+
+    Returns:
+        True if sync succeeded.
+    """
+    from nginx_proxy_helper.lib.nginx import (
+        list_active_configs,
+        render_ssl_config,
+        write_config,
+    )
+
+    active_configs = list_active_configs()
+
+    # Find all subdomains belonging to main_domain
+    all_domains = set()
+    subdomain_configs = []
+
+    for cfg in active_configs:
+        d = cfg["domain"]
+        if d == main_domain or d.endswith(f".{main_domain}"):
+            all_domains.add(d)
+            if cfg.get("server_names"):
+                for name in cfg["server_names"]:
+                    if name == main_domain or name.endswith(f".{main_domain}"):
+                        all_domains.add(name)
+            if d != main_domain:
+                subdomain_configs.append(cfg)
+
+    # Always ensure main_domain and www.main_domain are included
+    all_domains.add(main_domain)
+
+    console.print(
+        f"[yellow]Syncing & consolidating SSL certificates for '{main_domain}'...[/yellow]\n"
+        f"[cyan]Domains included ({len(all_domains)}): {', '.join(sorted(all_domains))}[/cyan]\n"
+    )
+
+    # Prepare Certbot arguments for unified master certificate
+    args = [
+        "certonly",
+        "--webroot",
+        "--webroot-path=/var/www/certbot",
+        "--non-interactive",
+        "--agree-tos",
+        "--expand",
+    ]
+
+    for d in sorted(all_domains):
+        args.extend(["-d", d])
+
+    email = email or DEFAULT_EMAIL
+    if email:
+        args.extend(["--email", email])
+    else:
+        args.append("--register-unsafely-without-email")
+
+    if CERTBOT_STAGING:
+        args.append("--staging")
+
+    console.print(f"[dim]certbot {' '.join(args)}[/dim]\n")
+
+    result = run_certbot_docker(args)
+
+    if result.returncode != 0:
+        stdout_str = (result.stdout or "").strip()
+        stderr_str = (result.stderr or "").strip()
+        output = f"{stdout_str}\n{stderr_str}".strip()
+        raise CertbotError(
+            f"Certbot failed to unify certificates for {main_domain}:\n{output}"
+        )
+
+    console.print(f"[green]✓[/green] Unified SSL certificate obtained for {main_domain}")
+
+    # Update all subdomain Nginx configs to use main_domain certificate
+    for cfg in subdomain_configs:
+        sub_domain = cfg["domain"]
+        target = cfg["target"]
+        ssl_conf = render_ssl_config(
+            domain=sub_domain,
+            target=target,
+            www=False,
+            cert_domain=main_domain,  # Point cert to main_domain!
+        )
+        write_config(sub_domain, ssl_conf)
+
+        # Delete separate old cert for sub_domain if it existed independently
+        if sub_domain != main_domain and (CERTBOT_CONF_DIR / "live" / sub_domain).exists():
+            remove_certificate(sub_domain)
+
+    return True
