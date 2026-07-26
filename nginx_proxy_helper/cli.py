@@ -442,7 +442,7 @@ def list_domains():
               help="Also delete SSL certificate files")
 @click.confirmation_option(prompt="Are you sure you want to remove this domain?")
 def remove_domain(domain: str, remove_cert: bool):
-    """Remove domain configuration.
+    """Remove domain configuration and optionally delete SSL certificates.
 
     Examples:
         proxy remove example.com
@@ -454,16 +454,36 @@ def remove_domain(domain: str, remove_cert: bool):
         console.print(f"[red]✗ Configuration for '{domain}' not found.[/red]")
         sys.exit(1)
 
+    # Extract target cert_domain before deleting config file
+    cert_domain = domain
+    for cfg in list_active_configs():
+        if cfg["domain"] == domain:
+            cert_domain = cfg.get("cert_domain") or domain
+            break
+
     # Backup before remove
     backup_config(domain)
 
-    # Remove config
+    # Remove Nginx config file
     remove_config(domain)
+
+    # Prompt interactively if --remove-cert flag was not explicitly passed
+    if not remove_cert and sys.stdin.isatty():
+        remove_cert = click.confirm(f"Also remove SSL certificate for '{cert_domain}'?", default=True)
 
     # Remove certificate if requested
     if remove_cert:
-        console.print("\n[yellow]Removing SSL certificate...[/yellow]")
-        remove_certificate(domain)
+        # Check if cert_domain is shared by other remaining active domains
+        remaining_configs = list_active_configs()
+        shared_by = [c["domain"] for c in remaining_configs if c.get("cert_domain") == cert_domain]
+
+        if shared_by:
+            console.print(
+                f"[yellow]⚠️ Certificate '{cert_domain}' is shared by other active domain(s) ({', '.join(shared_by)}) and will be preserved.[/yellow]"
+            )
+        else:
+            console.print(f"\n[yellow]Removing SSL certificate for {cert_domain}...[/yellow]")
+            remove_certificate(cert_domain)
 
     # Reload nginx
     console.print("\n[yellow]Reloading nginx...[/yellow]")
