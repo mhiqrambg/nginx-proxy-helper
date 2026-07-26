@@ -197,13 +197,24 @@ def check_target_network_status(target: str) -> None:
                 if conn_res.returncode == 0:
                     console.print(f"[green]✓[/green] Container '{host}' berhasil dihubungkan ke '{DOCKER_NETWORK}'!")
                 else:
-                    console.print(
-                        f"[yellow]⚠ Gagal auto-connect '{host}'. Jalankan manual:[/yellow]\n"
-                        f"  [cyan]docker network connect {DOCKER_NETWORK} {host}[/cyan]"
+                    raise DockerError(
+                        f"Target container '{host}' ada tetapi gagal dihubungkan ke network '{DOCKER_NETWORK}'.\n"
+                        f"Solusi manual: docker network connect {DOCKER_NETWORK} {host}"
                     )
             else:
                 console.print(f"[green]✓[/green] Target container '{host}' sudah terhubung ke '{DOCKER_NETWORK}'")
             return
+        else:
+            # Container tidak ditemukan
+            raise DockerError(
+                f"Target container '{host}' tidak ditemukan atau tidak sedang berjalan.\n\n"
+                f"💡 Solution & Troubleshooting:\n"
+                f"  1. Pastikan nama container benar (cek via 'docker ps').\n"
+                f"  2. Jika container ada, hubungkan ke network:\n"
+                f"     docker network connect {DOCKER_NETWORK} {host}\n"
+                f"  3. Atau jika service berjalan langsung di VPS host, gunakan:\n"
+                f"     --target host.docker.internal:{port}"
+            )
 
     # Case 2: Target menggunakan host.docker.internal / localhost
     ps_res = run_command(["docker", "ps", "--format", "{{.Names}}\t{{.Ports}}"], check=False)
@@ -217,7 +228,7 @@ def check_target_network_status(target: str) -> None:
                     found_containers.append((c_name, c_ports))
 
         if found_containers:
-            console.print(f"\n[bold yellow]💡 Smart Suggestion:[/bold yellow]")
+            console.print(f"\n[bold yellow]💡 Smart Target Suggestion:[/bold yellow]")
             for c_name, c_ports in found_containers:
                 net_check = run_command(
                     ["docker", "inspect", "-f", f"{{{{index .NetworkSettings.Networks \"{DOCKER_NETWORK}\"}}}}", c_name],
@@ -228,13 +239,13 @@ def check_target_network_status(target: str) -> None:
                 if not is_connected:
                     console.print(
                         f"  Ditemukan container [cyan]'{c_name}'[/cyan] dengan port {port}.\n"
-                        f"  [yellow]Saran:[/yellow] Hubungkan ke network agar proxy lebih stabil:\n"
+                        f"  [yellow]Rekomendasi:[/yellow] Hubungkan ke network agar proxy lancar:\n"
                         f"    1. [white]docker network connect {DOCKER_NETWORK} {c_name}[/white]\n"
-                        f"    2. Gunakan target container: [green]--target {c_name}:{port}[/green]"
+                        f"    2. Gunakan target: [green]--target {c_name}:{port}[/green]"
                     )
                 else:
                     console.print(
-                        f"  Container [cyan]'{c_name}'[/cyan] sudah ada di '{DOCKER_NETWORK}'.\n"
-                        f"  [green]Saran:[/green] Gunakan target internal: [green]--target {c_name}:{port}[/green]"
+                        f"  Container [cyan]'{c_name}'[/cyan] terdeteksi di '{DOCKER_NETWORK}'.\n"
+                        f"  [green]Rekomendasi:[/green] Gunakan target container internal: [green]--target {c_name}:{port}[/green]"
                     )
 
